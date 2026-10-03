@@ -1,10 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 const dns = require('dns');
-
 require('dotenv').config();
 
 const connectDB = require('./config/db');
+
+/* ============================================================
+   ROUTES
+============================================================ */
 
 const authRoutes =
     require('./routes/authRoutes');
@@ -33,7 +36,6 @@ const eligibilityRoutes =
 const applicationRoutes =
     require('./routes/applicationRoutes');
 
-
 /* ============================================================
    DNS CONFIGURATION
 ============================================================ */
@@ -44,73 +46,81 @@ dns.setServers([
     '8.8.4.4'
 ]);
 
-
 /* ============================================================
    EXPRESS APP
 ============================================================ */
 
 const app = express();
 
+/* ============================================================
+   CORS
+============================================================ */
+
+const allowedOrigins = [
+    'https://scholarship-frontend-theta.vercel.app',
+    'http://localhost:5173'
+];
+
+app.use(
+    cors({
+        origin: (origin, callback) => {
+
+            /*
+               Allow requests without an Origin header.
+               Useful for server-to-server requests
+               and health checks.
+            */
+            if (!origin) {
+                return callback(null, true);
+            }
+
+            if (
+                allowedOrigins.includes(origin)
+            ) {
+                return callback(null, true);
+            }
+
+            return callback(
+                new Error(
+                    'Not allowed by CORS'
+                )
+            );
+        },
+
+        credentials: true,
+
+        methods: [
+            'GET',
+            'POST',
+            'PUT',
+            'PATCH',
+            'DELETE',
+            'OPTIONS'
+        ],
+
+        allowedHeaders: [
+            'Content-Type',
+            'Authorization'
+        ]
+    })
+);
 
 /* ============================================================
-   MIDDLEWARE
+   BODY PARSERS
 ============================================================ */
 
 app.use(
-    cors({
-        origin: [
-            'https://scholarship-frontend-theta.vercel.app',
-            'http://localhost:5173'
-        ],
-        credentials: true,
-        methods: [
-            'GET',
-            'POST',
-            'PUT',
-            'DELETE',
-            'PATCH',
-            'OPTIONS'
-        ],
-        allowedHeaders: [
-            'Content-Type',
-            'Authorization'
-        ]
+    express.json({
+        limit: '10mb'
     })
-);
-
-app.options(
-    '*',
-    cors({
-        origin: [
-            'https://scholarship-frontend-theta.vercel.app',
-            'http://localhost:5173'
-        ],
-        credentials: true,
-        methods: [
-            'GET',
-            'POST',
-            'PUT',
-            'DELETE',
-            'PATCH',
-            'OPTIONS'
-        ],
-        allowedHeaders: [
-            'Content-Type',
-            'Authorization'
-        ]
-    })
-);
-
-app.use(
-    express.json()
 );
 
 app.use(
     express.urlencoded({
-        extended: true
+        extended: true,
+        limit: '10mb'
     })
 );
-
 
 /* ============================================================
    STATIC UPLOADS
@@ -120,7 +130,6 @@ app.use(
     '/uploads',
     express.static('uploads')
 );
-
 
 /* ============================================================
    API ROUTES
@@ -171,7 +180,6 @@ app.use(
     applicationRoutes
 );
 
-
 /* ============================================================
    HEALTH CHECK
 ============================================================ */
@@ -179,22 +187,16 @@ app.use(
 app.get(
     '/api/health',
     (req, res) => {
-
         res.status(200).json({
-
             success: true,
-
             message:
                 'University Scholarship Portal API is running.',
-
-            timestamp:
-                new Date().toISOString()
-
+            environment:
+                process.env.NODE_ENV ||
+                'development'
         });
-
     }
 );
-
 
 /* ============================================================
    ROOT ROUTE
@@ -203,19 +205,13 @@ app.get(
 app.get(
     '/',
     (req, res) => {
-
         res.status(200).json({
-
             success: true,
-
             message:
                 'University Scholarship Portal Backend'
-
         });
-
     }
 );
-
 
 /* ============================================================
    404 HANDLER
@@ -223,83 +219,73 @@ app.get(
 
 app.use(
     (req, res) => {
-
         res.status(404).json({
-
             success: false,
-
             message:
-                `Route not found: ${req.method} ${req.originalUrl}`
-
+                `Route ${req.method} ${req.originalUrl} not found.`
         });
-
     }
 );
-
 
 /* ============================================================
    GLOBAL ERROR HANDLER
 ============================================================ */
 
 app.use(
-    (
-        error,
-        req,
-        res,
-        next
-    ) => {
+    (error, req, res, next) => {
 
+        console.error('');
         console.error(
             '=============================================='
         );
-
         console.error(
             ' GLOBAL SERVER ERROR'
         );
-
         console.error(
             '=============================================='
         );
-
         console.error(
             error
         );
-
         console.error(
             '=============================================='
         );
+        console.error('');
 
+        if (
+            error.message ===
+            'Not allowed by CORS'
+        ) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    'Request blocked by CORS policy.'
+            });
+        }
 
-        res.status(
-            error.status || 500
+        return res.status(
+            error.statusCode || 500
         ).json({
-
             success: false,
-
             message:
                 error.message ||
                 'Internal server error.'
-
         });
-
     }
 );
 
-
 /* ============================================================
-   START SERVER
+   SERVER START
 ============================================================ */
 
 const PORT =
     process.env.PORT || 5000;
-
 
 const startServer = async () => {
 
     try {
 
         await connectDB();
-
 
         app.listen(
             PORT,
@@ -309,49 +295,55 @@ const startServer = async () => {
                 console.log(
                     '=============================================='
                 );
-
                 console.log(
                     ' UNIVERSITY SCHOLARSHIP PORTAL'
                 );
-
                 console.log(
                     '=============================================='
                 );
-
                 console.log(
-                    ` Server: http://localhost:${PORT}`
+                    ` Server running on port: ${PORT}`
                 );
-
                 console.log(
-                    ` API: http://localhost:${PORT}/api`
+                    ` Environment: ${
+                        process.env.NODE_ENV ||
+                        'development'
+                    }`
                 );
-
                 console.log(
-                    ` Health: http://localhost:${PORT}/api/health`
+                    ' MongoDB: Connected'
                 );
-
                 console.log(
                     '=============================================='
                 );
-
                 console.log('');
-
             }
         );
 
-
     } catch (error) {
 
+        console.error('');
         console.error(
-            'Unable to start server:',
+            '=============================================='
+        );
+        console.error(
+            ' SERVER STARTUP FAILED'
+        );
+        console.error(
+            '=============================================='
+        );
+        console.error(
             error.message
         );
+        console.error(
+            '=============================================='
+        );
+        console.error('');
 
         process.exit(1);
-
     }
-
 };
 
-
 startServer();
+
+module.exports = app;
