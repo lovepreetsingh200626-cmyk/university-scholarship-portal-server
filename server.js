@@ -59,7 +59,7 @@ const app = express();
 app.use(
     cors({
         origin: [
-            'https://scholarship-frontend-theta.vercel.app',
+            'https://scholarship-frontend-theta.vercel.app/',
             'http://localhost:5173'
         ],
         credentials: true,
