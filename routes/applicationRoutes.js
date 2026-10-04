@@ -4,6 +4,7 @@ const {
     createApplication,
     getMyApplications,
     getApplicationById,
+    getApplicationDocumentUrl,
     updateApplication,
     uploadApplicationDocument,
     submitApplication
@@ -18,6 +19,7 @@ const upload =
 
 const router = express.Router();
 
+
 /* ============================================================
    CREATE APPLICATION
 ============================================================ */
@@ -27,6 +29,7 @@ router.post(
     protect,
     createApplication
 );
+
 
 /* ============================================================
    GET MY APPLICATIONS
@@ -38,6 +41,18 @@ router.get(
     getMyApplications
 );
 
+
+/* ============================================================
+   GET SECURE APPLICATION DOCUMENT URL
+============================================================ */
+
+router.get(
+    '/:id/documents/:documentId',
+    protect,
+    getApplicationDocumentUrl
+);
+
+
 /* ============================================================
    GET APPLICATION BY ID
 ============================================================ */
@@ -48,6 +63,7 @@ router.get(
     getApplicationById
 );
 
+
 /* ============================================================
    UPDATE APPLICATION
 ============================================================ */
@@ -57,6 +73,7 @@ router.put(
     protect,
     updateApplication
 );
+
 
 /* ============================================================
    UPLOAD APPLICATION DOCUMENT
@@ -129,6 +146,7 @@ router.post(
     uploadApplicationDocument
 );
 
+
 /* ============================================================
    SUBMIT APPLICATION
 ============================================================ */
@@ -138,5 +156,6 @@ router.post(
     protect,
     submitApplication
 );
+
 
 module.exports = router;

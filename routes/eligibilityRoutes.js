@@ -10,8 +10,11 @@ const {
 
 const router = express.Router();
 
+
 /* ============================================================
-   ELIGIBILITY ROUTES
+   CHECK SCHOLARSHIP ELIGIBILITY
+
+   Logged-in students can check their own eligibility.
 ============================================================ */
 
 router.get(
@@ -19,5 +22,6 @@ router.get(
     protect,
     checkEligibility
 );
+
 
 module.exports = router;

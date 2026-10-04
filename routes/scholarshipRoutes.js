@@ -15,8 +15,11 @@ const {
 
 const router = express.Router();
 
+
 /* ============================================================
    GET ALL SCHOLARSHIPS
+
+   Logged-in students and admins can view scholarships.
 ============================================================ */
 
 router.get(
@@ -25,8 +28,11 @@ router.get(
     getAllScholarships
 );
 
+
 /* ============================================================
    GET SINGLE SCHOLARSHIP
+
+   Logged-in students and admins can view a scholarship.
 ============================================================ */
 
 router.get(
@@ -35,8 +41,10 @@ router.get(
     getScholarshipById
 );
 
+
 /* ============================================================
    CREATE SCHOLARSHIP
+
    ADMIN ONLY
 ============================================================ */
 
@@ -47,8 +55,10 @@ router.post(
     createScholarship
 );
 
+
 /* ============================================================
    UPDATE SCHOLARSHIP
+
    ADMIN ONLY
 ============================================================ */
 
@@ -59,8 +69,10 @@ router.put(
     updateScholarship
 );
 
+
 /* ============================================================
    DELETE SCHOLARSHIP
+
    ADMIN ONLY
 ============================================================ */
 
@@ -70,5 +82,6 @@ router.delete(
     adminOnly,
     deleteScholarship
 );
+
 
 module.exports = router;

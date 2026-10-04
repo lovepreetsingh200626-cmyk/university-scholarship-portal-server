@@ -1,6 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const dns = require('dns');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
 require('dotenv').config();
 
 const connectDB = require('./config/db');
@@ -53,56 +56,157 @@ dns.setServers([
 const app = express();
 
 /* ============================================================
-   CORS
+   TRUST PROXY
 ============================================================ */
 
-const allowedOrigins = [
-    'https://scholarship-frontend-theta.vercel.app',
-    'http://localhost:5173'
-];
+app.set(
+    'trust proxy',
+    1
+);
+
+/* ============================================================
+   SECURITY HEADERS
+============================================================ */
 
 app.use(
-    cors({
-        origin: (origin, callback) => {
-
-            /*
-               Allow requests without an Origin header.
-               Useful for server-to-server requests
-               and health checks.
-            */
-            if (!origin) {
-                return callback(null, true);
-            }
-
-            if (
-                allowedOrigins.includes(origin)
-            ) {
-                return callback(null, true);
-            }
-
-            return callback(
-                new Error(
-                    'Not allowed by CORS'
-                )
-            );
-        },
-
-        credentials: true,
-
-        methods: [
-            'GET',
-            'POST',
-            'PUT',
-            'PATCH',
-            'DELETE',
-            'OPTIONS'
-        ],
-
-        allowedHeaders: [
-            'Content-Type',
-            'Authorization'
-        ]
+    helmet({
+        crossOriginResourcePolicy: {
+            policy: 'cross-origin'
+        }
     })
+);
+
+/* ============================================================
+   CORS CONFIGURATION
+============================================================ */
+
+const normalizeOrigin = (origin) => {
+    if (
+        typeof origin !== 'string'
+    ) {
+        return '';
+    }
+
+    return origin
+        .trim()
+        .replace(/\/+$/, '');
+};
+
+const configuredOrigins = (
+    process.env.FRONTEND_URL ||
+    ''
+)
+    .split(',')
+    .map(normalizeOrigin)
+    .filter(Boolean);
+
+const defaultDevelopmentOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173'
+];
+
+const productionOrigins = [
+    'https://university-scholarship-portal.vercel.app'
+];
+
+const allowedOrigins = [
+    ...new Set([
+        ...defaultDevelopmentOrigins,
+        ...configuredOrigins,
+        ...productionOrigins
+    ])
+];
+
+const corsOptions = {
+    origin: (
+        origin,
+        callback
+    ) => {
+        if (!origin) {
+            return callback(
+                null,
+                true
+            );
+        }
+
+        const normalizedOrigin =
+            normalizeOrigin(origin);
+
+        if (
+            allowedOrigins.includes(
+                normalizedOrigin
+            )
+        ) {
+            return callback(
+                null,
+                true
+            );
+        }
+
+        console.error(
+            'CORS blocked origin:',
+            origin
+        );
+
+        return callback(
+            new Error(
+                'Not allowed by CORS'
+            )
+        );
+    },
+
+    credentials: true,
+
+    methods: [
+        'GET',
+        'POST',
+        'PUT',
+        'PATCH',
+        'DELETE',
+        'OPTIONS'
+    ],
+
+    allowedHeaders: [
+        'Content-Type',
+        'Authorization'
+    ],
+
+    exposedHeaders: [
+        'Content-Length'
+    ],
+
+    optionsSuccessStatus: 204
+};
+
+app.use(
+    cors(corsOptions)
+);
+
+/* ============================================================
+   REQUEST RATE LIMITING
+============================================================ */
+
+const generalLimiter =
+    rateLimit({
+        windowMs:
+            15 * 60 * 1000,
+
+        max: 300,
+
+        standardHeaders: true,
+
+        legacyHeaders: false,
+
+        message: {
+            success: false,
+            message:
+                'Too many requests from this IP. Please try again later.'
+        }
+    });
+
+app.use(
+    '/api',
+    generalLimiter
 );
 
 /* ============================================================
@@ -120,6 +224,111 @@ app.use(
         extended: true,
         limit: '10mb'
     })
+);
+
+/* ============================================================
+   EXPRESS 5 COMPATIBLE MONGODB INPUT SANITIZATION
+============================================================ */
+
+const sanitizeMongoObject = (
+    value
+) => {
+    if (
+        !value ||
+        typeof value !== 'object'
+    ) {
+        return value;
+    }
+
+    if (
+        Array.isArray(value)
+    ) {
+        for (
+            let index = 0;
+            index < value.length;
+            index++
+        ) {
+            if (
+                value[index] &&
+                typeof value[index] ===
+                    'object'
+            ) {
+                sanitizeMongoObject(
+                    value[index]
+                );
+            }
+        }
+
+        return value;
+    }
+
+    for (
+        const key of Object.keys(value)
+    ) {
+        if (
+            key.startsWith('$') ||
+            key.includes('.')
+        ) {
+            delete value[key];
+            continue;
+        }
+
+        const nestedValue =
+            value[key];
+
+        if (
+            nestedValue &&
+            typeof nestedValue ===
+                'object'
+        ) {
+            sanitizeMongoObject(
+                nestedValue
+            );
+        }
+    }
+
+    return value;
+};
+
+app.use(
+    (req, res, next) => {
+        try {
+            if (
+                req.body &&
+                typeof req.body ===
+                    'object'
+            ) {
+                sanitizeMongoObject(
+                    req.body
+                );
+            }
+
+            if (
+                req.params &&
+                typeof req.params ===
+                    'object'
+            ) {
+                sanitizeMongoObject(
+                    req.params
+                );
+            }
+
+            if (
+                req.query &&
+                typeof req.query ===
+                    'object'
+            ) {
+                sanitizeMongoObject(
+                    req.query
+                );
+            }
+
+            next();
+
+        } catch (error) {
+            next(error);
+        }
+    }
 );
 
 /* ============================================================
@@ -232,8 +441,12 @@ app.use(
 ============================================================ */
 
 app.use(
-    (error, req, res, next) => {
-
+    (
+        error,
+        req,
+        res,
+        next
+    ) => {
         console.error('');
         console.error(
             '=============================================='
@@ -263,34 +476,46 @@ app.use(
             });
         }
 
+        if (
+            error.statusCode === 429
+        ) {
+            return res.status(429).json({
+                success: false,
+                message:
+                    'Too many requests. Please try again later.'
+            });
+        }
+
         return res.status(
             error.statusCode || 500
         ).json({
             success: false,
             message:
-                error.message ||
-                'Internal server error.'
+                process.env.NODE_ENV ===
+                    'production'
+                    ? 'Internal server error.'
+                    : (
+                        error.message ||
+                        'Internal server error.'
+                    )
         });
     }
 );
 
 /* ============================================================
-   SERVER START
+   LOCAL SERVER START
 ============================================================ */
 
 const PORT =
     process.env.PORT || 5000;
 
 const startServer = async () => {
-
     try {
-
         await connectDB();
 
         app.listen(
             PORT,
             () => {
-
                 console.log('');
                 console.log(
                     '=============================================='
@@ -314,14 +539,41 @@ const startServer = async () => {
                     ' MongoDB: Connected'
                 );
                 console.log(
+                    ' Security: Helmet enabled'
+                );
+                console.log(
+                    ' Security: Rate limiting enabled'
+                );
+                console.log(
+                    ' Security: Custom MongoDB sanitization enabled'
+                );
+                console.log(
+                    ' Security: CORS enabled'
+                );
+                console.log(
+                    ' Storage: Cloudinary migration active'
+                );
+                console.log(
                     '=============================================='
                 );
+                console.log('');
+                console.log(
+                    'Allowed CORS origins:'
+                );
+
+                allowedOrigins.forEach(
+                    (origin) => {
+                        console.log(
+                            ` - ${origin}`
+                        );
+                    }
+                );
+
                 console.log('');
             }
         );
 
     } catch (error) {
-
         console.error('');
         console.error(
             '=============================================='
@@ -344,6 +596,42 @@ const startServer = async () => {
     }
 };
 
-startServer();
+/* ============================================================
+   LOCAL DEVELOPMENT
+============================================================ */
 
-module.exports = app;
+if (
+    require.main === module
+) {
+    startServer();
+}
+
+/* ============================================================
+   VERCEL SERVERLESS HANDLER
+============================================================ */
+
+module.exports = async (
+    req,
+    res
+) => {
+    try {
+        await connectDB();
+
+        return app(
+            req,
+            res
+        );
+
+    } catch (error) {
+        console.error(
+            'Vercel server initialization error:',
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                'Database connection failed.'
+        });
+    }
+};

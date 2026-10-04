@@ -5,7 +5,9 @@ const userSchema = new mongoose.Schema(
         name: {
             type: String,
             required: true,
-            trim: true
+            trim: true,
+            minlength: 2,
+            maxlength: 100
         },
 
         email: {
@@ -13,36 +15,67 @@ const userSchema = new mongoose.Schema(
             required: true,
             unique: true,
             lowercase: true,
-            trim: true
+            trim: true,
+            maxlength: 254,
+            index: true
         },
 
         password: {
             type: String,
-            required: true
+            required: true,
+            minlength: 1,
+            maxlength: 200
         },
 
         role: {
             type: String,
             enum: ['student', 'admin'],
-            default: 'student'
+            default: 'student',
+            index: true
         },
 
         mobile: {
             type: String,
             trim: true,
+            maxlength: 10,
             default: ''
         },
 
         isActive: {
             type: Boolean,
-            default: true
+            default: true,
+            index: true
         }
     },
     {
-        timestamps: true
+        timestamps: true,
+        strict: true
     }
 );
 
-const User = mongoose.model('User', userSchema);
+
+/* ============================================================
+   USER INDEXES
+============================================================ */
+
+/*
+   Email is already unique, so MongoDB will maintain
+   a unique index for it.
+*/
+
+userSchema.index({
+    role: 1,
+    isActive: 1
+});
+
+
+/* ============================================================
+   MODEL
+============================================================ */
+
+const User = mongoose.model(
+    'User',
+    userSchema
+);
 
 module.exports = User;

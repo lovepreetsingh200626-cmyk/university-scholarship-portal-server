@@ -11,8 +11,11 @@ const {
 
 const router = express.Router();
 
+
 /* ============================================================
-   STUDENT PROFILE ROUTES
+   GET MY STUDENT PROFILE
+
+   Authenticated student only.
 ============================================================ */
 
 router.get(
@@ -21,19 +24,21 @@ router.get(
     getMyProfile
 );
 
+
+/* ============================================================
+   CREATE OR UPDATE MY STUDENT PROFILE
+
+   Authenticated student only.
+
+   The controller uses req.user.id, so a student
+   cannot choose another user's profile ID.
+============================================================ */
+
 router.post(
     '/me',
     protect,
     createOrUpdateProfile
 );
 
+
 module.exports = router;
-router.get(
-    '/test',
-    (req, res) => {
-        return res.status(200).json({
-            success: true,
-            message: 'Student profile route is working.'
-        });
-    }
-);

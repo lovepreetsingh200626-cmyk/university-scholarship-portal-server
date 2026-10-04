@@ -6,6 +6,26 @@ const jwt = require('jsonwebtoken');
 
 const protect = (req, res, next) => {
     try {
+        /* --------------------------------------------------------
+           CHECK JWT SECRET
+        -------------------------------------------------------- */
+
+        if (!process.env.JWT_SECRET) {
+            console.error(
+                'Authentication error: JWT_SECRET is not configured.'
+            );
+
+            return res.status(500).json({
+                success: false,
+                message:
+                    'Authentication service is not configured properly.'
+            });
+        }
+
+        /* --------------------------------------------------------
+           READ AUTHORIZATION HEADER
+        -------------------------------------------------------- */
+
         const authHeader = req.headers.authorization;
 
         if (!authHeader) {
@@ -15,6 +35,10 @@ const protect = (req, res, next) => {
             });
         }
 
+        /* --------------------------------------------------------
+           CHECK BEARER FORMAT
+        -------------------------------------------------------- */
+
         if (!authHeader.startsWith('Bearer ')) {
             return res.status(401).json({
                 success: false,
@@ -22,7 +46,11 @@ const protect = (req, res, next) => {
             });
         }
 
-        const token = authHeader.split(' ')[1];
+        /* --------------------------------------------------------
+           EXTRACT TOKEN
+        -------------------------------------------------------- */
+
+        const token = authHeader.slice(7).trim();
 
         if (!token) {
             return res.status(401).json({
@@ -31,10 +59,50 @@ const protect = (req, res, next) => {
             });
         }
 
+        /* --------------------------------------------------------
+           VERIFY JWT
+        -------------------------------------------------------- */
+
         const decoded = jwt.verify(
             token,
-            process.env.JWT_SECRET
+            process.env.JWT_SECRET,
+            {
+                algorithms: ['HS256']
+            }
         );
+
+        /* --------------------------------------------------------
+           VALIDATE JWT PAYLOAD
+        -------------------------------------------------------- */
+
+        if (
+            !decoded ||
+            !decoded.id ||
+            !decoded.role
+        ) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid authentication token.'
+            });
+        }
+
+        /* --------------------------------------------------------
+           VALIDATE ROLE
+        -------------------------------------------------------- */
+
+        if (
+            decoded.role !== 'student' &&
+            decoded.role !== 'admin'
+        ) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid authentication role.'
+            });
+        }
+
+        /* --------------------------------------------------------
+           ATTACH AUTHENTICATED USER
+        -------------------------------------------------------- */
 
         req.user = {
             id: decoded.id,
@@ -44,26 +112,61 @@ const protect = (req, res, next) => {
         next();
 
     } catch (error) {
-        console.error('Authentication error:', error.message);
+
+        /* --------------------------------------------------------
+           JWT ERRORS
+        -------------------------------------------------------- */
+
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({
+                success: false,
+                message:
+                    'Your session has expired. Please login again.'
+            });
+        }
+
+        if (error.name === 'JsonWebTokenError') {
+            return res.status(401).json({
+                success: false,
+                message:
+                    'Invalid authentication token.'
+            });
+        }
+
+        console.error(
+            'Authentication error:',
+            error.message
+        );
 
         return res.status(401).json({
             success: false,
-            message: 'Invalid or expired authentication token.'
+            message:
+                'Authentication failed. Please login again.'
         });
     }
 };
+
 
 /* ============================================================
    ADMIN ONLY
 ============================================================ */
 
 const adminOnly = (req, res, next) => {
+
+    /* --------------------------------------------------------
+       AUTHENTICATION CHECK
+    -------------------------------------------------------- */
+
     if (!req.user) {
         return res.status(401).json({
             success: false,
             message: 'Authentication required.'
         });
     }
+
+    /* --------------------------------------------------------
+       ADMIN ROLE CHECK
+    -------------------------------------------------------- */
 
     if (req.user.role !== 'admin') {
         return res.status(403).json({
@@ -74,6 +177,11 @@ const adminOnly = (req, res, next) => {
 
     next();
 };
+
+
+/* ============================================================
+   EXPORT
+============================================================ */
 
 module.exports = {
     protect,

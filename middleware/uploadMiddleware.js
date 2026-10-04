@@ -1,87 +1,145 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+
 
 /* ============================================================
-   UPLOAD DIRECTORY
+   ALLOWED FILE TYPES
 ============================================================ */
 
-const uploadDirectory = path.join(
-    __dirname,
-    '../uploads/scholarships'
-);
+const allowedMimeTypes = [
+    'application/pdf',
+    'image/jpeg',
+    'image/png'
+];
 
-if (!fs.existsSync(uploadDirectory)) {
-    fs.mkdirSync(
-        uploadDirectory,
-        {
-            recursive: true
-        }
-    );
-}
 
 /* ============================================================
-   STORAGE
+   MAXIMUM FILE SIZE
 ============================================================ */
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadDirectory);
-    },
+const MAX_FILE_SIZE =
+    5 * 1024 * 1024;
 
-    filename: (req, file, cb) => {
-        const extension =
-            path.extname(file.originalname)
-                .toLowerCase();
-
-        const uniqueName =
-            `${Date.now()}-${Math.round(
-                Math.random() * 1000000000
-            )}${extension}`;
-
-        cb(null, uniqueName);
-    }
-});
 
 /* ============================================================
    FILE FILTER
 ============================================================ */
 
-const fileFilter = (req, file, cb) => {
-    const allowedMimeTypes = [
-        'application/pdf',
-        'image/jpeg',
-        'image/png'
-    ];
+const fileFilter = (
+    req,
+    file,
+    cb
+) => {
+
+    /*
+       Only allow the MIME types supported
+       by the scholarship document system.
+
+       The actual file content is additionally
+       verified later in applicationController.js
+       using file signatures.
+
+       Therefore MIME type alone is NOT trusted.
+    */
 
     if (
         allowedMimeTypes.includes(
             file.mimetype
         )
     ) {
-        cb(null, true);
-    } else {
-        cb(
-            new Error(
-                'Only PDF, JPG and PNG files are allowed.'
-            )
+        return cb(
+            null,
+            true
         );
     }
+
+    return cb(
+        new multer.MulterError(
+            'LIMIT_UNEXPECTED_FILE',
+            file.fieldname
+        )
+    );
 };
+
+
+/* ============================================================
+   MEMORY STORAGE
+============================================================ */
+
+/*
+   We intentionally use memoryStorage().
+
+   The uploaded file temporarily exists
+   in memory as:
+
+       req.file.buffer
+
+   The application controller validates the
+   actual file signature and then uploads the
+   file directly to authenticated Cloudinary
+   storage.
+
+   No permanent local file is created.
+
+   This is suitable for Vercel serverless
+   deployment.
+*/
+
+const storage =
+    multer.memoryStorage();
+
 
 /* ============================================================
    MULTER CONFIGURATION
 ============================================================ */
 
 const upload = multer({
+
     storage,
 
     fileFilter,
 
     limits: {
+
+        /*
+           Maximum individual file size:
+
+           5 MB
+        */
+
         fileSize:
-            5 * 1024 * 1024
+            MAX_FILE_SIZE,
+
+        /*
+           Only one document may be uploaded
+           in a single request.
+        */
+
+        files: 1,
+
+        /*
+           Prevent requests containing a large
+           number of multipart fields.
+        */
+
+        fields: 10,
+
+        /*
+           Prevent excessively large field names.
+        */
+
+        fieldNameSize: 100,
+
+        /*
+           Prevent excessively large text fields.
+        */
+
+        fieldSize: 10 * 1024
     }
 });
+
+
+/* ============================================================
+   EXPORT
+============================================================ */
 
 module.exports = upload;
