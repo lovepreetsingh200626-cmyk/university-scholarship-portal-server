@@ -4,7 +4,7 @@ const { Readable } = require('stream');
 const mongoose = require('mongoose');
 
 const FreeshipCardApplication = require('../models/FreeshipCardApplication');
-const User = require('../models/User');
+const User = require('../models/user');
 const cloudinary = require('../config/cloudinary');
 const { createPdf } = require('../utils/simplePdf');
 const { encryptAadhaar, decryptAadhaar } = require('../utils/aadhaarCrypto');

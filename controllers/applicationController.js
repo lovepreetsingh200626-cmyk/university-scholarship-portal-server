@@ -11,7 +11,7 @@ const FreeshipCardApplication =
     require('../models/FreeshipCardApplication');
 
 const User =
-    require('../models/User');
+    require('../models/user');
 
 const {
     checkStudentEligibility
