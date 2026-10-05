@@ -1,93 +1,136 @@
 const ScholarshipApplication =
     require('../models/ScholarshipApplication');
 
+
 /* ============================================================
    GET ADMIN DASHBOARD STATISTICS
 ============================================================ */
 
-const getDashboardStatistics = async (req, res) => {
+const getDashboardStatistics = async (
+    req,
+    res
+) => {
+
     try {
+
+        /* ========================================================
+           GET ALL APPLICATION COUNTS IN ONE QUERY
+        ======================================================== */
+
+        const statisticsResult =
+            await ScholarshipApplication.aggregate([
+                {
+                    $match: {
+                        status: { $ne: 'DRAFT' }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$status',
+
+                        count: {
+                            $sum: 1
+                        }
+                    }
+                }
+            ]);
+
+
+        /* ========================================================
+           CREATE STATUS COUNT MAP
+        ======================================================== */
+
+        const statusCounts = {};
+
+
+        statisticsResult.forEach(
+            (item) => {
+
+                statusCounts[item._id] =
+                    item.count;
+            }
+        );
+
+
+        /* ========================================================
+           RESPONSE
+        ======================================================== */
+
         const totalApplications =
-            await ScholarshipApplication.countDocuments();
+            statisticsResult.reduce(
+                (
+                    total,
+                    item
+                ) => {
+                    return (
+                        total +
+                        item.count
+                    );
+                },
+                0
+            );
 
-        const draftApplications =
-            await ScholarshipApplication.countDocuments({
-                status: 'DRAFT'
-            });
-
-        const submittedApplications =
-            await ScholarshipApplication.countDocuments({
-                status: 'SUBMITTED'
-            });
-
-        const underVerificationApplications =
-            await ScholarshipApplication.countDocuments({
-                status: 'UNDER VERIFICATION'
-            });
-
-        const correctionRequiredApplications =
-            await ScholarshipApplication.countDocuments({
-                status: 'CORRECTION REQUIRED'
-            });
-
-        const resubmittedApplications =
-            await ScholarshipApplication.countDocuments({
-                status: 'RESUBMITTED'
-            });
-
-        const verifiedApplications =
-            await ScholarshipApplication.countDocuments({
-                status: 'VERIFIED'
-            });
-
-        const sanctionedApplications =
-            await ScholarshipApplication.countDocuments({
-                status: 'SANCTIONED'
-            });
-
-        const disbursedApplications =
-            await ScholarshipApplication.countDocuments({
-                status: 'DISBURSED'
-            });
-
-        const rejectedApplications =
-            await ScholarshipApplication.countDocuments({
-                status: 'REJECTED'
-            });
 
         return res.status(200).json({
+
             success: true,
 
             statistics: {
+
                 totalApplications,
 
-                draftApplications,
+                draftApplications:
+                    statusCounts.DRAFT ||
+                    0,
 
-                submittedApplications,
+                submittedApplications:
+                    statusCounts.SUBMITTED ||
+                    0,
 
-                underVerificationApplications,
+                underVerificationApplications:
+                    statusCounts[
+                        'UNDER VERIFICATION'
+                    ] ||
+                    0,
 
-                correctionRequiredApplications,
+                correctionRequiredApplications:
+                    statusCounts[
+                        'CORRECTION REQUIRED'
+                    ] ||
+                    0,
 
-                resubmittedApplications,
+                resubmittedApplications:
+                    statusCounts.RESUBMITTED ||
+                    0,
 
-                verifiedApplications,
+                verifiedApplications:
+                    statusCounts.VERIFIED ||
+                    0,
 
-                sanctionedApplications,
+                sanctionedApplications:
+                    statusCounts.SANCTIONED ||
+                    0,
 
-                disbursedApplications,
+                disbursedApplications:
+                    statusCounts.DISBURSED ||
+                    0,
 
-                rejectedApplications
+                rejectedApplications:
+                    statusCounts.REJECTED ||
+                    0
             }
         });
 
     } catch (error) {
+
         console.error(
             'Admin dashboard statistics error:',
             error
         );
 
+
         return res.status(500).json({
+
             success: false,
 
             message:
@@ -95,6 +138,7 @@ const getDashboardStatistics = async (req, res) => {
         });
     }
 };
+
 
 /* ============================================================
    EXPORTS

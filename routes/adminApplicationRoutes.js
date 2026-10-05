@@ -53,7 +53,7 @@ router.get(
 /*
    Start application verification
 
-   SUBMITTED
+   SUBMITTED or RESUBMITTED
         ↓
    UNDER VERIFICATION
 */

@@ -1,25 +1,80 @@
+const mongoose = require('mongoose');
+
 const ScholarshipApplication =
     require('../models/ScholarshipApplication');
+
 
 /* ============================================================
    DISBURSE SCHOLARSHIP APPLICATION
    SANCTIONED → DISBURSED
 ============================================================ */
 
-const disburseApplication = async (req, res) => {
+const disburseApplication = async (
+    req,
+    res
+) => {
+
     try {
+
+        const {
+            id
+        } = req.params;
+
+
+        /* --------------------------------------------------------
+           APPLICATION ID VALIDATION
+        -------------------------------------------------------- */
+
+        if (
+            !id
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    'Application ID is required.'
+            });
+        }
+
+
+        if (
+            typeof id !== 'string' ||
+            !mongoose.isValidObjectId(
+                id
+            )
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    'Invalid application ID.'
+            });
+        }
+
+
+        /* --------------------------------------------------------
+           FIND APPLICATION
+        -------------------------------------------------------- */
+
         const application =
             await ScholarshipApplication.findById(
-                req.params.id
+                id
             );
 
-        if (!application) {
+
+        if (
+            !application
+        ) {
             return res.status(404).json({
                 success: false,
                 message:
                     'Scholarship application not found.'
             });
         }
+
+
+        /* --------------------------------------------------------
+           STATUS VALIDATION
+           SANCTIONED → DISBURSED
+        -------------------------------------------------------- */
 
         if (
             application.status !==
@@ -32,13 +87,24 @@ const disburseApplication = async (req, res) => {
             });
         }
 
+
+        /* --------------------------------------------------------
+           UPDATE DISBURSEMENT STATUS
+        -------------------------------------------------------- */
+
         application.status =
             'DISBURSED';
 
         application.disbursedAt =
             new Date();
 
+
         await application.save();
+
+
+        /* --------------------------------------------------------
+           RESPONSE
+        -------------------------------------------------------- */
 
         return res.status(200).json({
             success: true,
@@ -48,10 +114,12 @@ const disburseApplication = async (req, res) => {
         });
 
     } catch (error) {
+
         console.error(
             'Disburse application error:',
             error
         );
+
 
         return res.status(500).json({
             success: false,
@@ -60,6 +128,7 @@ const disburseApplication = async (req, res) => {
         });
     }
 };
+
 
 /* ============================================================
    EXPORTS

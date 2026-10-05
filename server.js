@@ -8,6 +8,7 @@ require('dotenv').config();
 
 const connectDB = require('./config/db');
 
+
 /* ============================================================
    ROUTES
 ============================================================ */
@@ -39,6 +40,10 @@ const eligibilityRoutes =
 const applicationRoutes =
     require('./routes/applicationRoutes');
 
+const freeshipCardRoutes =
+    require('./routes/freeshipCardRoutes');
+
+
 /* ============================================================
    DNS CONFIGURATION
 ============================================================ */
@@ -49,11 +54,13 @@ dns.setServers([
     '8.8.4.4'
 ]);
 
+
 /* ============================================================
    EXPRESS APP
 ============================================================ */
 
 const app = express();
+
 
 /* ============================================================
    TRUST PROXY
@@ -63,6 +70,7 @@ app.set(
     'trust proxy',
     1
 );
+
 
 /* ============================================================
    SECURITY HEADERS
@@ -75,6 +83,7 @@ app.use(
         }
     })
 );
+
 
 /* ============================================================
    CORS CONFIGURATION
@@ -92,6 +101,7 @@ const normalizeOrigin = (origin) => {
         .replace(/\/+$/, '');
 };
 
+
 const configuredOrigins = (
     process.env.FRONTEND_URL ||
     ''
@@ -100,14 +110,17 @@ const configuredOrigins = (
     .map(normalizeOrigin)
     .filter(Boolean);
 
+
 const defaultDevelopmentOrigins = [
     'http://localhost:5173',
     'http://127.0.0.1:5173'
 ];
 
+
 const productionOrigins = [
     'https://university-scholarship-portal.vercel.app'
 ];
+
 
 const allowedOrigins = [
     ...new Set([
@@ -117,11 +130,19 @@ const allowedOrigins = [
     ])
 ];
 
+
 const corsOptions = {
     origin: (
         origin,
         callback
     ) => {
+
+        /*
+           Requests without an Origin header can occur
+           from tools such as PowerShell, server-to-server
+           requests, or health checks.
+        */
+
         if (!origin) {
             return callback(
                 null,
@@ -129,8 +150,10 @@ const corsOptions = {
             );
         }
 
+
         const normalizedOrigin =
             normalizeOrigin(origin);
+
 
         if (
             allowedOrigins.includes(
@@ -143,10 +166,12 @@ const corsOptions = {
             );
         }
 
+
         console.error(
             'CORS blocked origin:',
             origin
         );
+
 
         return callback(
             new Error(
@@ -178,9 +203,11 @@ const corsOptions = {
     optionsSuccessStatus: 204
 };
 
+
 app.use(
     cors(corsOptions)
 );
+
 
 /* ============================================================
    REQUEST RATE LIMITING
@@ -204,10 +231,12 @@ const generalLimiter =
         }
     });
 
+
 app.use(
     '/api',
     generalLimiter
 );
+
 
 /* ============================================================
    BODY PARSERS
@@ -219,12 +248,14 @@ app.use(
     })
 );
 
+
 app.use(
     express.urlencoded({
         extended: true,
         limit: '10mb'
     })
 );
+
 
 /* ============================================================
    EXPRESS 5 COMPATIBLE MONGODB INPUT SANITIZATION
@@ -233,6 +264,7 @@ app.use(
 const sanitizeMongoObject = (
     value
 ) => {
+
     if (
         !value ||
         typeof value !== 'object'
@@ -240,14 +272,17 @@ const sanitizeMongoObject = (
         return value;
     }
 
+
     if (
         Array.isArray(value)
     ) {
+
         for (
             let index = 0;
             index < value.length;
             index++
         ) {
+
             if (
                 value[index] &&
                 typeof value[index] ===
@@ -262,9 +297,11 @@ const sanitizeMongoObject = (
         return value;
     }
 
+
     for (
         const key of Object.keys(value)
     ) {
+
         if (
             key.startsWith('$') ||
             key.includes('.')
@@ -273,8 +310,10 @@ const sanitizeMongoObject = (
             continue;
         }
 
+
         const nestedValue =
             value[key];
+
 
         if (
             nestedValue &&
@@ -287,12 +326,16 @@ const sanitizeMongoObject = (
         }
     }
 
+
     return value;
 };
 
+
 app.use(
     (req, res, next) => {
+
         try {
+
             if (
                 req.body &&
                 typeof req.body ===
@@ -302,6 +345,7 @@ app.use(
                     req.body
                 );
             }
+
 
             if (
                 req.params &&
@@ -313,6 +357,7 @@ app.use(
                 );
             }
 
+
             if (
                 req.query &&
                 typeof req.query ===
@@ -323,13 +368,16 @@ app.use(
                 );
             }
 
+
             next();
 
         } catch (error) {
+
             next(error);
         }
     }
 );
+
 
 /* ============================================================
    STATIC UPLOADS
@@ -340,6 +388,7 @@ app.use(
     express.static('uploads')
 );
 
+
 /* ============================================================
    API ROUTES
 ============================================================ */
@@ -349,63 +398,98 @@ app.use(
     authRoutes
 );
 
+
 app.use(
     '/api/admin',
     adminRoutes
 );
+
 
 app.use(
     '/api/admin/applications',
     adminApplicationRoutes
 );
 
+
 app.use(
     '/api/admin/students',
     adminStudentRoutes
 );
+
 
 app.use(
     '/api/admin/settings',
     adminSettingsRoutes
 );
 
+
 app.use(
     '/api/scholarships',
     scholarshipRoutes
 );
+
 
 app.use(
     '/api/student-profile',
     studentProfileRoutes
 );
 
+
 app.use(
     '/api/eligibility',
     eligibilityRoutes
 );
+
 
 app.use(
     '/api/applications',
     applicationRoutes
 );
 
+
+app.use(
+    '/api/freeship-cards',
+    freeshipCardRoutes
+);
+
+
 /* ============================================================
    HEALTH CHECK
 ============================================================ */
 
 app.get(
-    '/api/health',
+    '/api',
     (req, res) => {
+
         res.status(200).json({
             success: true,
+
             message:
                 'University Scholarship Portal API is running.',
+
+            healthCheck:
+                '/api/health'
+        });
+    }
+);
+
+app.get(
+    '/api/health',
+    (req, res) => {
+
+        res.status(200).json({
+            success: true,
+
+            message:
+                'University Scholarship Portal API is running.',
+
             environment:
                 process.env.NODE_ENV ||
                 'development'
         });
     }
 );
+
 
 /* ============================================================
    ROOT ROUTE
@@ -414,13 +498,16 @@ app.get(
 app.get(
     '/',
     (req, res) => {
+
         res.status(200).json({
             success: true,
+
             message:
                 'University Scholarship Portal Backend'
         });
     }
 );
+
 
 /* ============================================================
    404 HANDLER
@@ -428,13 +515,16 @@ app.get(
 
 app.use(
     (req, res) => {
+
         res.status(404).json({
             success: false,
+
             message:
                 `Route ${req.method} ${req.originalUrl} not found.`
         });
     }
 );
+
 
 /* ============================================================
    GLOBAL ERROR HANDLER
@@ -447,6 +537,7 @@ app.use(
         res,
         next
     ) => {
+
         console.error('');
         console.error(
             '=============================================='
@@ -465,6 +556,7 @@ app.use(
         );
         console.error('');
 
+
         if (
             error.message ===
             'Not allowed by CORS'
@@ -476,6 +568,7 @@ app.use(
             });
         }
 
+
         if (
             error.statusCode === 429
         ) {
@@ -486,10 +579,12 @@ app.use(
             });
         }
 
+
         return res.status(
             error.statusCode || 500
         ).json({
             success: false,
+
             message:
                 process.env.NODE_ENV ===
                     'production'
@@ -502,6 +597,7 @@ app.use(
     }
 );
 
+
 /* ============================================================
    LOCAL SERVER START
 ============================================================ */
@@ -509,92 +605,122 @@ app.use(
 const PORT =
     process.env.PORT || 5000;
 
+
 const startServer = async () => {
+
     try {
+
         await connectDB();
+
 
         app.listen(
             PORT,
             () => {
+
                 console.log('');
+
                 console.log(
                     '=============================================='
                 );
+
                 console.log(
                     ' UNIVERSITY SCHOLARSHIP PORTAL'
                 );
+
                 console.log(
                     '=============================================='
                 );
+
                 console.log(
                     ` Server running on port: ${PORT}`
                 );
+
                 console.log(
                     ` Environment: ${
                         process.env.NODE_ENV ||
                         'development'
                     }`
                 );
+
                 console.log(
                     ' MongoDB: Connected'
                 );
+
                 console.log(
                     ' Security: Helmet enabled'
                 );
+
                 console.log(
                     ' Security: Rate limiting enabled'
                 );
+
                 console.log(
                     ' Security: Custom MongoDB sanitization enabled'
                 );
+
                 console.log(
                     ' Security: CORS enabled'
                 );
+
                 console.log(
                     ' Storage: Cloudinary migration active'
                 );
+
                 console.log(
                     '=============================================='
                 );
+
                 console.log('');
+
                 console.log(
                     'Allowed CORS origins:'
                 );
 
+
                 allowedOrigins.forEach(
                     (origin) => {
+
                         console.log(
                             ` - ${origin}`
                         );
                     }
                 );
 
+
                 console.log('');
             }
         );
 
     } catch (error) {
+
         console.error('');
+
         console.error(
             '=============================================='
         );
+
         console.error(
             ' SERVER STARTUP FAILED'
         );
+
         console.error(
             '=============================================='
         );
+
         console.error(
             error.message
         );
+
         console.error(
             '=============================================='
         );
+
         console.error('');
 
         process.exit(1);
     }
 };
+
 
 /* ============================================================
    LOCAL DEVELOPMENT
@@ -606,6 +732,7 @@ if (
     startServer();
 }
 
+
 /* ============================================================
    VERCEL SERVERLESS HANDLER
 ============================================================ */
@@ -614,7 +741,9 @@ module.exports = async (
     req,
     res
 ) => {
+
     try {
+
         await connectDB();
 
         return app(
@@ -623,6 +752,7 @@ module.exports = async (
         );
 
     } catch (error) {
+
         console.error(
             'Vercel server initialization error:',
             error

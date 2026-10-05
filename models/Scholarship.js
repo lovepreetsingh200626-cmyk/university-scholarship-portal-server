@@ -260,7 +260,7 @@ scholarshipSchema.pre(
             this.applicationStartDate &&
             this.applicationEndDate &&
             this.applicationEndDate <
-            this.applicationStartDate
+                this.applicationStartDate
         ) {
             return next(
                 new Error(
@@ -282,9 +282,11 @@ scholarshipSchema.index({
     status: 1
 });
 
+
 scholarshipSchema.index({
     academicYear: 1
 });
+
 
 scholarshipSchema.index({
     applicationStartDate: 1,

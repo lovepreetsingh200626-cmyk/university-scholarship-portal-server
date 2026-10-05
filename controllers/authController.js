@@ -1,4 +1,7 @@
+const crypto = require('crypto');
+
 const User = require('../models/User');
+const { isEmailDeliveryConfigured, sendPasswordRecoveryOTP } = require('../services/emailService');
 
 const {
     hashPassword,
@@ -11,9 +14,6 @@ const {
    VALIDATION HELPERS
 ============================================================ */
 
-/*
-   Basic email validation.
-*/
 const isValidEmail = (email) => {
     const emailRegex =
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -22,9 +22,6 @@ const isValidEmail = (email) => {
 };
 
 
-/*
-   Student name validation.
-*/
 const isValidName = (name) => {
     if (typeof name !== 'string') {
         return false;
@@ -32,56 +29,78 @@ const isValidName = (name) => {
 
     const trimmedName = name.trim();
 
-    if (
-        trimmedName.length < 2 ||
-        trimmedName.length > 100
-    ) {
-        return false;
-    }
-
-    return true;
+    return (
+        trimmedName.length >= 2 &&
+        trimmedName.length <= 100
+    );
 };
 
 
-/*
-   Password validation.
-*/
-const isValidPassword = (password) => {
-    if (typeof password !== 'string') {
+const isValidMobile = (mobile) => {
+    if (typeof mobile !== 'string') {
         return false;
     }
 
+    return /^[0-9]{10}$/.test(
+        mobile.trim()
+    );
+};
+
+
+const isValidPassword = (password) => {
     return (
+        typeof password === 'string' &&
         password.length >= 8 &&
         password.length <= 128
     );
 };
 
 
-/*
-   Mobile number validation.
+/* ============================================================
+   STUDENT ID GENERATION
+============================================================ */
 
-   Mobile is optional during registration,
-   but if provided it must contain 10 digits.
-*/
-const isValidMobile = (mobile) => {
-    if (
-        mobile === undefined ||
-        mobile === null ||
-        mobile === ''
-    ) {
-        return true;
-    }
+const generateStudentId = () => {
+    const year =
+        new Date()
+            .getFullYear()
+            .toString()
+            .slice(-2);
 
-    if (typeof mobile !== 'string') {
-        return false;
-    }
+    const randomPart =
+        crypto
+            .randomBytes(5)
+            .toString('hex')
+            .toUpperCase();
 
-    const mobileRegex = /^[0-9]{10}$/;
+    return `USP${year}${randomPart}`;
+};
 
-    return mobileRegex.test(
-        mobile.trim()
-    );
+
+/* ============================================================
+   INITIAL PASSWORD GENERATION
+============================================================ */
+
+const generateInitialPassword = () => {
+    const randomPart =
+        crypto
+            .randomBytes(9)
+            .toString('base64url');
+
+    return `Stu@${randomPart}`;
+};
+
+const hashRecoveryOTP = (otp) => {
+    const secret = process.env.PASSWORD_RESET_SECRET || process.env.JWT_SECRET;
+    if (!secret) throw new Error('JWT_SECRET or PASSWORD_RESET_SECRET is required for password recovery.');
+    return crypto.createHmac('sha256', secret).update(otp).digest('hex');
+};
+
+const clearRecoveryOTP = (user) => {
+    user.passwordResetOTPHash = '';
+    user.passwordResetOTPExpiresAt = null;
+    user.passwordResetOTPAttempts = 0;
+    user.passwordResetOTPSentAt = null;
 };
 
 
@@ -92,10 +111,6 @@ const isValidMobile = (mobile) => {
 const registerStudent = async (req, res) => {
     try {
 
-        /* --------------------------------------------------------
-           CHECK REQUEST BODY
-        -------------------------------------------------------- */
-
         if (
             !req.body ||
             typeof req.body !== 'object' ||
@@ -103,70 +118,63 @@ const registerStudent = async (req, res) => {
         ) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid registration data.'
+                message:
+                    'Invalid registration data.'
             });
         }
 
-
-        /* --------------------------------------------------------
-           READ INPUT
-        -------------------------------------------------------- */
 
         const {
             name,
             email,
-            password,
             mobile
         } = req.body;
 
 
-        /* --------------------------------------------------------
-           REQUIRED FIELD CHECK
-        -------------------------------------------------------- */
-
         if (
             name === undefined ||
             email === undefined ||
-            password === undefined
+            mobile === undefined
         ) {
             return res.status(400).json({
                 success: false,
                 message:
-                    'Name, email and password are required.'
+                    'Name, email and mobile number are required.'
             });
         }
 
-
-        /* --------------------------------------------------------
-           TYPE VALIDATION
-        -------------------------------------------------------- */
 
         if (
             typeof name !== 'string' ||
-            typeof email !== 'string' ||
-            typeof password !== 'string'
+            typeof email !== 'string'
         ) {
             return res.status(400).json({
                 success: false,
                 message:
-                    'Name, email and password must be valid text values.'
+                    'Name and email must be valid text values.'
             });
         }
 
 
-        /* --------------------------------------------------------
-           NORMALIZE INPUT
-        -------------------------------------------------------- */
+        const normalizedName =
+            name.trim();
 
-        const normalizedName = name.trim();
-        const normalizedEmail = email.trim().toLowerCase();
+        const normalizedEmail =
+            email
+                .trim()
+                .toLowerCase();
+
+        const normalizedMobile =
+            typeof mobile === 'string'
+                ? mobile.trim()
+                : '';
 
 
-        /* --------------------------------------------------------
-           NAME VALIDATION
-        -------------------------------------------------------- */
-
-        if (!isValidName(normalizedName)) {
+        if (
+            !isValidName(
+                normalizedName
+            )
+        ) {
             return res.status(400).json({
                 success: false,
                 message:
@@ -175,13 +183,11 @@ const registerStudent = async (req, res) => {
         }
 
 
-        /* --------------------------------------------------------
-           EMAIL VALIDATION
-        -------------------------------------------------------- */
-
         if (
             normalizedEmail.length > 254 ||
-            !isValidEmail(normalizedEmail)
+            !isValidEmail(
+                normalizedEmail
+            )
         ) {
             return res.status(400).json({
                 success: false,
@@ -191,24 +197,12 @@ const registerStudent = async (req, res) => {
         }
 
 
-        /* --------------------------------------------------------
-           PASSWORD VALIDATION
-        -------------------------------------------------------- */
-
-        if (!isValidPassword(password)) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    'Password must contain between 8 and 128 characters.'
-            });
-        }
-
-
-        /* --------------------------------------------------------
-           MOBILE VALIDATION
-        -------------------------------------------------------- */
-
-        if (!isValidMobile(mobile)) {
+        if (
+            !normalizedMobile ||
+            !isValidMobile(
+                normalizedMobile
+            )
+        ) {
             return res.status(400).json({
                 success: false,
                 message:
@@ -217,15 +211,12 @@ const registerStudent = async (req, res) => {
         }
 
 
-        /* --------------------------------------------------------
-           CHECK EXISTING ACCOUNT
-        -------------------------------------------------------- */
+        const existingEmailUser =
+            await User.findOne({
+                email: normalizedEmail
+            });
 
-        const existingUser = await User.findOne({
-            email: normalizedEmail
-        });
-
-        if (existingUser) {
+        if (existingEmailUser) {
             return res.status(409).json({
                 success: false,
                 message:
@@ -234,52 +225,126 @@ const registerStudent = async (req, res) => {
         }
 
 
-        /* --------------------------------------------------------
-           HASH PASSWORD
-        -------------------------------------------------------- */
+        let studentId;
+        let credentialGenerationSuccessful =
+            false;
+
+
+        for (
+            let attempt = 0;
+            attempt < 5;
+            attempt++
+        ) {
+            studentId =
+                generateStudentId();
+
+            const existingStudent =
+                await User.findOne({
+                    studentId
+                });
+
+            if (!existingStudent) {
+                credentialGenerationSuccessful =
+                    true;
+
+                break;
+            }
+        }
+
+
+        if (
+            !credentialGenerationSuccessful
+        ) {
+            return res.status(500).json({
+                success: false,
+                message:
+                    'Unable to generate a unique student ID. Please try again.'
+            });
+        }
+
+
+        const initialPassword =
+            generateInitialPassword();
+
 
         const hashedPassword =
-            await hashPassword(password);
+            await hashPassword(
+                initialPassword
+            );
 
 
-        /* --------------------------------------------------------
-           CREATE STUDENT ACCOUNT
-        -------------------------------------------------------- */
+        const user =
+            await User.create({
+                name:
+                    normalizedName,
 
-        const user = await User.create({
-            name: normalizedName,
-            email: normalizedEmail,
-            password: hashedPassword,
-            mobile:
-                mobile && typeof mobile === 'string'
-                    ? mobile.trim()
-                    : '',
-            role: 'student'
-        });
+                studentId:
+                    studentId,
+
+                email:
+                    normalizedEmail,
+
+                password:
+                    hashedPassword,
+
+                mustChangePassword:
+                    true,
+
+                mobile:
+                    normalizedMobile,
+
+                role:
+                    'student',
+
+                isActive:
+                    true
+            });
 
 
-        /* --------------------------------------------------------
-           CREATE JWT
-        -------------------------------------------------------- */
+        const token =
+            createToken(user);
 
-        const token = createToken(user);
-
-
-        /* --------------------------------------------------------
-           RESPONSE
-        -------------------------------------------------------- */
 
         return res.status(201).json({
             success: true,
+
             message:
-                'Student account created successfully.',
+                'Student registration completed successfully.',
+
+            credentials: {
+                studentId:
+                    user.studentId,
+
+                initialPassword:
+                    initialPassword
+            },
+
             token,
+
             user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                mobile: user.mobile,
-                role: user.role
+                id:
+                    user._id,
+
+                studentId:
+                    user.studentId,
+
+                name:
+                    user.name,
+
+                email:
+                    user.email,
+
+                mobile:
+                    user.mobile,
+
+                role:
+                    user.role,
+
+                mustChangePassword:
+                    user.mustChangePassword,
+
+                isActive:
+                    user.isActive
             }
         });
 
@@ -290,15 +355,46 @@ const registerStudent = async (req, res) => {
             error
         );
 
-        /* --------------------------------------------------------
-           HANDLE MONGOOSE DUPLICATE KEY
-        -------------------------------------------------------- */
 
-        if (error.code === 11000) {
+        if (
+            error &&
+            error.code === 11000
+        ) {
+            const duplicateFields =
+                Object.keys(
+                    error.keyPattern || {}
+                );
+
+            if (
+                duplicateFields.includes(
+                    'email'
+                )
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    message:
+                        'An account with this email already exists.'
+                });
+            }
+
+
+            if (
+                duplicateFields.includes(
+                    'studentId'
+                )
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    message:
+                        'A student ID conflict occurred. Please register again.'
+                });
+            }
+
+
             return res.status(409).json({
                 success: false,
                 message:
-                    'An account with this email already exists.'
+                    'An account with the provided information already exists.'
             });
         }
 
@@ -306,7 +402,7 @@ const registerStudent = async (req, res) => {
         return res.status(500).json({
             success: false,
             message:
-                'Unable to create student account.'
+                'Unable to complete student registration.'
         });
     }
 };
@@ -319,10 +415,6 @@ const registerStudent = async (req, res) => {
 const login = async (req, res) => {
     try {
 
-        /* --------------------------------------------------------
-           CHECK REQUEST BODY
-        -------------------------------------------------------- */
-
         if (
             !req.body ||
             typeof req.body !== 'object' ||
@@ -330,118 +422,223 @@ const login = async (req, res) => {
         ) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid login data.'
+                message:
+                    'Invalid login data.'
             });
         }
 
 
-        /* --------------------------------------------------------
-           READ INPUT
-        -------------------------------------------------------- */
-
         const {
+            studentId,
             email,
             password
         } = req.body;
 
 
-        /* --------------------------------------------------------
-           REQUIRED FIELD CHECK
-        -------------------------------------------------------- */
-
         if (
-            email === undefined ||
-            password === undefined
-        ) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    'Email and password are required.'
-            });
-        }
-
-
-        /* --------------------------------------------------------
-           TYPE VALIDATION
-        -------------------------------------------------------- */
-
-        if (
-            typeof email !== 'string' ||
+            password === undefined ||
             typeof password !== 'string'
         ) {
             return res.status(400).json({
                 success: false,
                 message:
-                    'Email and password must be valid text values.'
+                    'Password is required.'
             });
         }
 
 
-        /* --------------------------------------------------------
-           NORMALIZE EMAIL
-        -------------------------------------------------------- */
+        if (
+            !isValidPassword(password)
+        ) {
+            return res.status(401).json({
+                success: false,
+                message:
+                    'Login credentials are incorrect.'
+            });
+        }
+
+
+        /* ========================================================
+           STUDENT LOGIN
+        ======================================================== */
+
+        if (
+            typeof studentId === 'string' &&
+            studentId.trim()
+        ) {
+
+            const normalizedStudentId =
+                studentId
+                    .trim()
+                    .toUpperCase();
+
+
+            const user =
+                await User.findOne({
+                    studentId:
+                        normalizedStudentId
+                });
+
+
+            if (!user) {
+                return res.status(401).json({
+                    success: false,
+                    message:
+                        'Login credentials are incorrect.'
+                });
+            }
+
+
+            if (
+                user.role !== 'student'
+            ) {
+                return res.status(401).json({
+                    success: false,
+                    message:
+                        'Login credentials are incorrect.'
+                });
+            }
+
+
+            if (!user.isActive) {
+                return res.status(403).json({
+                    success: false,
+                    message:
+                        'This account has been deactivated.'
+                });
+            }
+
+
+            const passwordMatch =
+                await comparePassword(
+                    password,
+                    user.password
+                );
+
+
+            if (!passwordMatch) {
+                return res.status(401).json({
+                    success: false,
+                    message:
+                        'Login credentials are incorrect.'
+                });
+            }
+
+
+            const token =
+                createToken(user);
+
+
+            return res.status(200).json({
+                success: true,
+
+                message:
+                    'Login successful.',
+
+                token,
+
+                user: {
+                    id:
+                        user._id,
+
+                    studentId:
+                        user.studentId,
+
+                    name:
+                        user.name,
+
+                    email:
+                        user.email,
+
+                    mobile:
+                        user.mobile,
+
+                    role:
+                        user.role,
+
+                    mustChangePassword:
+                        user.mustChangePassword,
+
+                    isActive:
+                        user.isActive
+                }
+            });
+        }
+
+
+        /* ========================================================
+           ADMIN LOGIN
+        ======================================================== */
+
+        if (
+            typeof email !== 'string' ||
+            !email.trim()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    'Student ID is required for student login.'
+            });
+        }
+
 
         const normalizedEmail =
-            email.trim().toLowerCase();
+            email
+                .trim()
+                .toLowerCase();
 
-
-        /* --------------------------------------------------------
-           EMAIL VALIDATION
-        -------------------------------------------------------- */
 
         if (
             normalizedEmail.length > 254 ||
-            !isValidEmail(normalizedEmail)
+            !isValidEmail(
+                normalizedEmail
+            )
         ) {
             return res.status(401).json({
                 success: false,
                 message:
-                    'Email or password is incorrect.'
+                    'Login credentials are incorrect.'
             });
         }
 
 
-        /* --------------------------------------------------------
-           PASSWORD LENGTH CHECK
-        -------------------------------------------------------- */
-
-        if (
-            password.length < 8 ||
-            password.length > 128
-        ) {
-            return res.status(401).json({
-                success: false,
-                message:
-                    'Email or password is incorrect.'
+        const user =
+            await User.findOne({
+                email:
+                    normalizedEmail
             });
-        }
 
-
-        /* --------------------------------------------------------
-           FIND USER
-        -------------------------------------------------------- */
-
-        const user = await User.findOne({
-            email: normalizedEmail
-        });
-
-
-        /* --------------------------------------------------------
-           ACCOUNT NOT FOUND
-        -------------------------------------------------------- */
 
         if (!user) {
             return res.status(401).json({
                 success: false,
                 message:
-                    'Email or password is incorrect.'
+                    'Login credentials are incorrect.'
             });
         }
 
 
-        /* --------------------------------------------------------
-           ACCOUNT STATUS
-        -------------------------------------------------------- */
+        if (
+            user.role === 'student'
+        ) {
+            return res.status(401).json({
+                success: false,
+                message:
+                    'Please login using your Student ID.'
+            });
+        }
+
+
+        if (
+            user.role !== 'admin'
+        ) {
+            return res.status(401).json({
+                success: false,
+                message:
+                    'Login credentials are incorrect.'
+            });
+        }
+
 
         if (!user.isActive) {
             return res.status(403).json({
@@ -452,46 +649,58 @@ const login = async (req, res) => {
         }
 
 
-        /* --------------------------------------------------------
-           PASSWORD CHECK
-        -------------------------------------------------------- */
-
         const passwordMatch =
             await comparePassword(
                 password,
                 user.password
             );
 
+
         if (!passwordMatch) {
             return res.status(401).json({
                 success: false,
                 message:
-                    'Email or password is incorrect.'
+                    'Login credentials are incorrect.'
             });
         }
 
 
-        /* --------------------------------------------------------
-           CREATE JWT
-        -------------------------------------------------------- */
+        const token =
+            createToken(user);
 
-        const token = createToken(user);
-
-
-        /* --------------------------------------------------------
-           RESPONSE
-        -------------------------------------------------------- */
 
         return res.status(200).json({
             success: true,
-            message: 'Login successful.',
+
+            message:
+                'Login successful.',
+
             token,
+
             user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                mobile: user.mobile,
-                role: user.role
+                id:
+                    user._id,
+
+                studentId:
+                    user.studentId || '',
+
+                name:
+                    user.name,
+
+                email:
+                    user.email,
+
+                mobile:
+                    user.mobile,
+
+                role:
+                    user.role,
+
+                mustChangePassword:
+                    user.mustChangePassword,
+
+                isActive:
+                    user.isActive
             }
         });
 
@@ -512,10 +721,297 @@ const login = async (req, res) => {
 
 
 /* ============================================================
+   CHANGE PASSWORD
+============================================================ */
+
+const changePassword = async (req, res) => {
+    try {
+
+        if (
+            !req.user ||
+            !req.user.id
+        ) {
+            return res.status(401).json({
+                success: false,
+                message:
+                    'Authentication required.'
+            });
+        }
+
+
+        if (
+            !req.body ||
+            typeof req.body !== 'object' ||
+            Array.isArray(req.body)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    'Invalid password change data.'
+            });
+        }
+
+
+        const {
+            currentPassword,
+            newPassword
+        } = req.body;
+
+
+        if (
+            typeof currentPassword !== 'string' ||
+            typeof newPassword !== 'string'
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    'Current password and new password are required.'
+            });
+        }
+
+
+        if (
+            !isValidPassword(
+                currentPassword
+            )
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    'Current password is invalid.'
+            });
+        }
+
+
+        if (
+            !isValidPassword(
+                newPassword
+            )
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    'New password must contain between 8 and 128 characters.'
+            });
+        }
+
+
+        if (
+            currentPassword === newPassword
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    'New password must be different from the current password.'
+            });
+        }
+
+
+        const user =
+            await User.findById(
+                req.user.id
+            );
+
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    'Account not found.'
+            });
+        }
+
+
+        if (!user.isActive) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    'This account has been deactivated.'
+            });
+        }
+
+
+        const currentPasswordMatch =
+            await comparePassword(
+                currentPassword,
+                user.password
+            );
+
+
+        if (!currentPasswordMatch) {
+            return res.status(401).json({
+                success: false,
+                message:
+                    'Current password is incorrect.'
+            });
+        }
+
+
+        const hashedNewPassword =
+            await hashPassword(
+                newPassword
+            );
+
+
+        user.password =
+            hashedNewPassword;
+
+        user.mustChangePassword = false;
+
+        clearRecoveryOTP(user);
+
+        await user.save();
+
+
+        const token =
+            createToken(user);
+
+
+        return res.status(200).json({
+            success: true,
+
+            message:
+                'Password changed successfully.',
+
+            token,
+
+            user: {
+                id: user._id,
+                studentId: user.studentId || '',
+                name: user.name,
+                email: user.email,
+                mobile: user.mobile,
+                role: user.role,
+                mustChangePassword: false,
+                isActive: user.isActive
+            }
+        });
+
+    } catch (error) {
+
+        console.error(
+            'Change password error:',
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                'Unable to change password.'
+        });
+    }
+};
+
+
+/* ============================================================
+   PASSWORD RECOVERY BY EMAIL OTP
+============================================================ */
+
+const requestPasswordReset = async (req, res) => {
+    const email = typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
+
+    if (!isValidEmail(email) || email.length > 254) {
+        return res.status(400).json({ success: false, message: 'Enter the email address registered to your student account.' });
+    }
+    if (!isEmailDeliveryConfigured()) {
+        return res.status(503).json({ success: false, message: 'Email recovery is not configured yet. Contact the portal administrator.' });
+    }
+
+    const genericMessage = 'If an active student account uses this email, a recovery code will arrive shortly.';
+    try {
+        const user = await User.findOne({ email, role: 'student' }).select(
+            '+passwordResetOTPHash +passwordResetOTPExpiresAt +passwordResetOTPAttempts +passwordResetOTPSentAt'
+        );
+        if (!user || !user.isActive) {
+            return res.json({ success: true, message: genericMessage });
+        }
+
+        if (user.passwordResetOTPSentAt && Date.now() - user.passwordResetOTPSentAt.getTime() < 60 * 1000) {
+            return res.json({ success: true, message: genericMessage });
+        }
+
+        const otp = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+        user.passwordResetOTPHash = hashRecoveryOTP(otp);
+        user.passwordResetOTPExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        user.passwordResetOTPAttempts = 0;
+        user.passwordResetOTPSentAt = new Date();
+        await user.save();
+
+        try {
+            await sendPasswordRecoveryOTP(user.email, otp);
+        } catch (mailError) {
+            clearRecoveryOTP(user);
+            await user.save();
+            console.error('Password recovery email delivery failed:', mailError.message);
+        }
+
+        return res.json({ success: true, message: genericMessage });
+    } catch (error) {
+        console.error('Password recovery request error:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to request a recovery code right now.' });
+    }
+};
+
+const resetPasswordWithOTP = async (req, res) => {
+    const email = typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
+    const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
+    const newPassword = req.body?.newPassword;
+
+    if (!isValidEmail(email) || email.length > 254 || !/^\d{6}$/.test(otp)) {
+        return res.status(400).json({ success: false, message: 'Enter a valid email address and the 6-digit recovery code.' });
+    }
+    if (!isValidPassword(newPassword)) {
+        return res.status(400).json({ success: false, message: 'New password must contain between 8 and 128 characters.' });
+    }
+
+    try {
+        const user = await User.findOne({ email, role: 'student' }).select(
+            '+passwordResetOTPHash +passwordResetOTPExpiresAt +passwordResetOTPAttempts +passwordResetOTPSentAt'
+        );
+        const invalidCode = () => res.status(400).json({ success: false, message: 'The recovery code is invalid or expired. Request a new code and try again.' });
+        if (!user || !user.isActive || !user.passwordResetOTPHash || !user.passwordResetOTPExpiresAt) {
+            return invalidCode();
+        }
+        if (user.passwordResetOTPExpiresAt.getTime() <= Date.now() || user.passwordResetOTPAttempts >= 5) {
+            clearRecoveryOTP(user);
+            await user.save();
+            return invalidCode();
+        }
+
+        const expected = Buffer.from(user.passwordResetOTPHash, 'hex');
+        const supplied = Buffer.from(hashRecoveryOTP(otp), 'hex');
+        const matches = expected.length === supplied.length && crypto.timingSafeEqual(expected, supplied);
+        if (!matches) {
+            user.passwordResetOTPAttempts += 1;
+            if (user.passwordResetOTPAttempts >= 5) clearRecoveryOTP(user);
+            await user.save();
+            return invalidCode();
+        }
+
+        user.password = await hashPassword(newPassword);
+        user.mustChangePassword = false;
+        clearRecoveryOTP(user);
+        await user.save();
+        return res.json({ success: true, message: 'Password reset successfully. You can now sign in.' });
+    } catch (error) {
+        console.error('Password reset error:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to reset the password right now.' });
+    }
+};
+
+
+/* ============================================================
    EXPORT
 ============================================================ */
 
 module.exports = {
     registerStudent,
-    login
+    login,
+    changePassword,
+    requestPasswordReset,
+    resetPasswordWithOTP
 };

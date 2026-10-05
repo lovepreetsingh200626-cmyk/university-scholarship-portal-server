@@ -15,6 +15,7 @@ const router = express.Router();
    CHECK SCHOLARSHIP ELIGIBILITY
 
    Logged-in students can check their own eligibility.
+
 ============================================================ */
 
 router.get(

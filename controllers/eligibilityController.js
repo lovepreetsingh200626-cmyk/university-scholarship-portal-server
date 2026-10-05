@@ -74,6 +74,16 @@ const checkEligibility = async (
                     result.eligible
                 ),
 
+            freeshipCardApproved:
+                Boolean(
+                    result.freeshipCardApproved
+                ),
+
+            needsApplicationDetails:
+                Boolean(
+                    result.needsApplicationDetails
+                ),
+
             reason:
                 result.reason || '',
 

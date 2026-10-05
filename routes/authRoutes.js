@@ -3,8 +3,15 @@ const rateLimit = require('express-rate-limit');
 
 const {
     registerStudent,
-    login
+    login,
+    changePassword,
+    requestPasswordReset,
+    resetPasswordWithOTP
 } = require('../controllers/authController');
+
+const {
+    protect
+} = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
@@ -64,6 +71,49 @@ const loginLimiter = rateLimit({
 
 
 /* ============================================================
+   PASSWORD CHANGE RATE LIMITER
+============================================================ */
+
+/*
+   Prevents repeated automated password-change attempts.
+
+   Maximum:
+   5 password-change attempts every 15 minutes
+   from the same IP address.
+*/
+
+const changePasswordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+
+    standardHeaders: true,
+    legacyHeaders: false,
+
+    message: {
+        success: false,
+        message:
+            'Too many password change attempts. Please try again later.'
+    }
+});
+
+const passwordResetRequestLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many recovery requests. Please try again later.' }
+});
+
+const passwordResetLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many password reset attempts. Please try again later.' }
+});
+
+
+/* ============================================================
    STUDENT REGISTRATION
 ============================================================ */
 
@@ -82,6 +132,37 @@ router.post(
     '/login',
     loginLimiter,
     login
+);
+
+router.post(
+    '/forgot-password',
+    passwordResetRequestLimiter,
+    requestPasswordReset
+);
+
+router.post(
+    '/reset-password',
+    passwordResetLimiter,
+    resetPasswordWithOTP
+);
+
+
+/* ============================================================
+   CHANGE PASSWORD
+============================================================ */
+
+/*
+   User must already be authenticated.
+
+   The current password is verified before the new
+   password is saved.
+*/
+
+router.post(
+    '/change-password',
+    protect,
+    changePasswordLimiter,
+    changePassword
 );
 
 

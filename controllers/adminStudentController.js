@@ -1,5 +1,10 @@
+const mongoose = require('mongoose');
+
 const User = require('../models/User');
-const StudentProfile = require('../models/StudentProfile');
+
+const StudentProfile =
+    require('../models/StudentProfile');
+
 const ScholarshipApplication =
     require('../models/ScholarshipApplication');
 
@@ -8,7 +13,10 @@ const ScholarshipApplication =
    GET ALL STUDENTS
 ============================================================ */
 
-const getAllStudents = async (req, res) => {
+const getAllStudents = async (
+    req,
+    res
+) => {
 
     try {
 
@@ -18,7 +26,9 @@ const getAllStudents = async (req, res) => {
 
 
         const searchText =
-            search.trim();
+            typeof search === 'string'
+                ? search.trim()
+                : '';
 
 
         const userQuery = {
@@ -67,7 +77,8 @@ const getAllStudents = async (req, res) => {
 
         const studentIds =
             students.map(
-                student => student._id
+                student =>
+                    student._id
             );
 
 
@@ -100,7 +111,8 @@ const getAllStudents = async (req, res) => {
                     $match: {
                         student: {
                             $in: studentIds
-                        }
+                        },
+                        status: { $ne: 'DRAFT' }
                     }
                 },
 
@@ -221,6 +233,37 @@ const getStudentById = async (
         } = req.params;
 
 
+        if (!id) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    'Student ID is required.'
+
+            });
+
+        }
+
+
+        if (
+            typeof id !== 'string' ||
+            !mongoose.isValidObjectId(id)
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    'Invalid student ID.'
+
+            });
+
+        }
+
+
         const student =
             await User.findOne({
                 _id: id,
@@ -255,7 +298,8 @@ const getStudentById = async (
 
         const applications =
             await ScholarshipApplication.find({
-                student: id
+                student: id,
+                status: { $ne: 'DRAFT' }
             })
                 .populate(
                     'scholarship',
@@ -294,23 +338,6 @@ const getStudentById = async (
             'Get student by ID error:',
             error
         );
-
-
-        if (
-            error.name ===
-            'CastError'
-        ) {
-
-            return res.status(404).json({
-
-                success: false,
-
-                message:
-                    'Student not found.'
-
-            });
-
-        }
 
 
         return res.status(500).json({

@@ -93,6 +93,20 @@ const scholarshipApplicationSchema =
                     default: ''
                 },
 
+                studentId: {
+                    type: String,
+                    trim: true,
+                    maxlength: 50,
+                    default: ''
+                },
+
+                applicationType: {
+                    type: String,
+                    trim: true,
+                    maxlength: 50,
+                    default: ''
+                },
+
                 registrationNumber: {
                     type: String,
                     trim: true,
@@ -135,6 +149,55 @@ const scholarshipApplicationSchema =
                     default: ''
                 },
 
+                fatherName: {
+                    type: String,
+                    trim: true,
+                    maxlength: 100,
+                    default: ''
+                },
+
+                motherName: {
+                    type: String,
+                    trim: true,
+                    maxlength: 100,
+                    default: ''
+                },
+
+                religion: {
+                    type: String,
+                    trim: true,
+                    maxlength: 80,
+                    default: ''
+                },
+
+                specialCategory: {
+                    type: String,
+                    trim: true,
+                    maxlength: 100,
+                    default: ''
+                },
+
+                aadhaarNumber: {
+                    type: String,
+                    trim: true,
+                    maxlength: 20,
+                    default: ''
+                },
+
+                deNotifiedTribes: {
+                    type: String,
+                    trim: true,
+                    maxlength: 20,
+                    default: ''
+                },
+
+                tribes: {
+                    type: String,
+                    trim: true,
+                    maxlength: 100,
+                    default: ''
+                },
+
                 gender: {
                     type: String,
                     trim: true,
@@ -147,6 +210,88 @@ const scholarshipApplicationSchema =
                     default: null
                 },
 
+                institute: {
+                    type: String,
+                    trim: true,
+                    maxlength: 200,
+                    default: ''
+                },
+
+                tehsil: {
+                    type: String,
+                    trim: true,
+                    maxlength: 120,
+                    default: ''
+                },
+
+                hosteller: {
+                    type: String,
+                    trim: true,
+                    maxlength: 20,
+                    default: ''
+                },
+
+                class10Board: {
+                    type: String,
+                    trim: true,
+                    maxlength: 200,
+                    default: ''
+                },
+
+                class10Session: {
+                    type: String,
+                    trim: true,
+                    maxlength: 30,
+                    default: ''
+                },
+
+                class10RollNumber: {
+                    type: String,
+                    trim: true,
+                    maxlength: 50,
+                    default: ''
+                },
+
+                enrollment: {
+                    type: String,
+                    trim: true,
+                    maxlength: 50,
+                    default: ''
+                },
+
+                admissionDate: {
+                    type: Date,
+                    default: null
+                },
+
+                attendance: {
+                    type: Number,
+                    min: 0,
+                    max: 100,
+                    default: null
+                },
+
+                admitCard: {
+                    type: String,
+                    trim: true,
+                    maxlength: 50,
+                    default: ''
+                },
+
+                examinationYear: {
+                    type: String,
+                    trim: true,
+                    maxlength: 30,
+                    default: ''
+                },
+
+                promoted: {
+                    type: String,
+                    trim: true,
+                    maxlength: 20,
+                    default: ''
+                },
+
                 mobile: {
                     type: String,
                     trim: true,
@@ -154,7 +299,36 @@ const scholarshipApplicationSchema =
                     default: ''
                 },
 
+                emailAddress: {
+                    type: String,
+                    trim: true,
+                    lowercase: true,
+                    maxlength: 254,
+                    default: ''
+                },
+
+                contactNumbers: {
+                    type: String,
+                    trim: true,
+                    maxlength: 100,
+                    default: ''
+                },
+
                 address: {
+                    type: String,
+                    trim: true,
+                    maxlength: 500,
+                    default: ''
+                },
+
+                correspondenceAddress: {
+                    type: String,
+                    trim: true,
+                    maxlength: 500,
+                    default: ''
+                },
+
+                permanentAddress: {
                     type: String,
                     trim: true,
                     maxlength: 500,
@@ -203,13 +377,39 @@ const scholarshipApplicationSchema =
                     default: ''
                 },
 
+                bankAddress: {
+                    type: String,
+                    trim: true,
+                    maxlength: 300,
+                    default: ''
+                },
+
+                bankBranchName: {
+                    type: String,
+                    trim: true,
+                    maxlength: 150,
+                    default: ''
+                },
+
                 ifscCode: {
                     type: String,
                     trim: true,
                     uppercase: true,
                     maxlength: 11,
                     default: ''
+                },
+
+                declarationAccepted: {
+                    type: Boolean,
+                    default: false
                 }
+            },
+
+            // Keep the full UID encrypted; it is only needed for the printed form.
+            aadhaarEncrypted: {
+                type: String,
+                select: false,
+                default: ''
             },
 
 
@@ -350,7 +550,8 @@ const scholarshipApplicationSchema =
         },
 
         {
-            timestamps: true
+            timestamps: true,
+            strict: true
         }
     );
 

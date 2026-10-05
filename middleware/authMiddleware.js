@@ -100,6 +100,22 @@ const protect = (req, res, next) => {
             });
         }
 
+        const isPasswordChangeRequest =
+            req.method === 'POST' &&
+            req.originalUrl.split('?')[0].endsWith('/auth/change-password');
+
+        if (
+            decoded.role === 'student' &&
+            decoded.mustChangePassword === true &&
+            !isPasswordChangeRequest
+        ) {
+            return res.status(403).json({
+                success: false,
+                code: 'PASSWORD_CHANGE_REQUIRED',
+                message: 'Change your initial password before continuing.'
+            });
+        }
+
         /* --------------------------------------------------------
            ATTACH AUTHENTICATED USER
         -------------------------------------------------------- */

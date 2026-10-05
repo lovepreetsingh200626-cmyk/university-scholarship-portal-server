@@ -120,8 +120,24 @@ const updateAdminProfile = async (
             name !== undefined
         ) {
 
+            if (
+                typeof name !== 'string'
+            ) {
+
+                return res.status(400).json({
+
+                    success: false,
+
+                    message:
+                        'Admin name must be text.'
+
+                });
+
+            }
+
+
             const cleanName =
-                String(name).trim();
+                name.trim();
 
 
             if (!cleanName) {
@@ -132,6 +148,38 @@ const updateAdminProfile = async (
 
                     message:
                         'Admin name cannot be empty.'
+
+                });
+
+            }
+
+
+            if (
+                cleanName.length < 2
+            ) {
+
+                return res.status(400).json({
+
+                    success: false,
+
+                    message:
+                        'Admin name must contain at least 2 characters.'
+
+                });
+
+            }
+
+
+            if (
+                cleanName.length > 100
+            ) {
+
+                return res.status(400).json({
+
+                    success: false,
+
+                    message:
+                        'Admin name cannot exceed 100 characters.'
 
                 });
 
@@ -152,8 +200,24 @@ const updateAdminProfile = async (
             email !== undefined
         ) {
 
+            if (
+                typeof email !== 'string'
+            ) {
+
+                return res.status(400).json({
+
+                    success: false,
+
+                    message:
+                        'Admin email must be text.'
+
+                });
+
+            }
+
+
             const cleanEmail =
-                String(email)
+                email
                     .trim()
                     .toLowerCase();
 
@@ -166,6 +230,44 @@ const updateAdminProfile = async (
 
                     message:
                         'Admin email cannot be empty.'
+
+                });
+
+            }
+
+
+            if (
+                cleanEmail.length > 254
+            ) {
+
+                return res.status(400).json({
+
+                    success: false,
+
+                    message:
+                        'Admin email cannot exceed 254 characters.'
+
+                });
+
+            }
+
+
+            const emailPattern =
+                /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+
+            if (
+                !emailPattern.test(
+                    cleanEmail
+                )
+            ) {
+
+                return res.status(400).json({
+
+                    success: false,
+
+                    message:
+                        'Please enter a valid admin email address.'
 
                 });
 
@@ -214,8 +316,48 @@ const updateAdminProfile = async (
             mobile !== undefined
         ) {
 
-            admin.mobile =
+            if (
+                typeof mobile !== 'string' &&
+                typeof mobile !== 'number'
+            ) {
+
+                return res.status(400).json({
+
+                    success: false,
+
+                    message:
+                        'Admin mobile number must be valid.'
+
+                });
+
+            }
+
+
+            const cleanMobile =
                 String(mobile).trim();
+
+
+            if (
+                cleanMobile &&
+                !/^\d{10}$/.test(
+                    cleanMobile
+                )
+            ) {
+
+                return res.status(400).json({
+
+                    success: false,
+
+                    message:
+                        'Admin mobile number must contain exactly 10 digits.'
+
+                });
+
+            }
+
+
+            admin.mobile =
+                cleanMobile;
 
         }
 
@@ -252,6 +394,22 @@ const updateAdminProfile = async (
             'Update admin profile error:',
             error
         );
+
+
+        if (
+            error.code === 11000
+        ) {
+
+            return res.status(409).json({
+
+                success: false,
+
+                message:
+                    'This email address is already in use.'
+
+            });
+
+        }
 
 
         return res.status(500).json({
@@ -291,6 +449,9 @@ const changeAdminPassword = async (
         ==================================================== */
 
         if (
+            typeof currentPassword !== 'string' ||
+            typeof newPassword !== 'string' ||
+            typeof confirmPassword !== 'string' ||
             !currentPassword ||
             !newPassword ||
             !confirmPassword
@@ -343,6 +504,22 @@ const changeAdminPassword = async (
 
                 message:
                     'New password must contain at least 8 characters.'
+
+            });
+
+        }
+
+
+        if (
+            newPassword.length > 200
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    'New password cannot exceed 200 characters.'
 
             });
 

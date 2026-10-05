@@ -4,6 +4,7 @@ const {
     createApplication,
     getMyApplications,
     getApplicationById,
+    downloadApplicationPdf,
     getApplicationDocumentUrl,
     updateApplication,
     uploadApplicationDocument,
@@ -50,6 +51,12 @@ router.get(
     '/:id/documents/:documentId',
     protect,
     getApplicationDocumentUrl
+);
+
+router.get(
+    '/:id/pdf',
+    protect,
+    downloadApplicationPdf
 );
 
 

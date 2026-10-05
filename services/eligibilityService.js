@@ -3,8 +3,8 @@ const mongoose = require('mongoose');
 const Scholarship =
     require('../models/Scholarship');
 
-const StudentProfile =
-    require('../models/StudentProfile');
+const FreeshipCardApplication =
+    require('../models/FreeshipCardApplication');
 
 
 /* ============================================================
@@ -13,7 +13,8 @@ const StudentProfile =
 
 const checkStudentEligibility = async (
     studentUserId,
-    scholarshipId
+    scholarshipId,
+    applicantDetails = null
 ) => {
 
     /* --------------------------------------------------------
@@ -91,24 +92,31 @@ const checkStudentEligibility = async (
     }
 
 
-    /* --------------------------------------------------------
-       FIND STUDENT PROFILE
-    -------------------------------------------------------- */
+    const freeshipCard = await FreeshipCardApplication.findOne({
+        student: studentUserId,
+        status: 'APPROVED'
+    }).lean();
 
-    const studentProfile =
-        await StudentProfile.findOne({
-            user: studentUserId
-        }).lean();
-
-
-    if (!studentProfile) {
+    if (!freeshipCard) {
         return {
             eligible: false,
             reason:
-                'Student profile must be completed before checking eligibility.',
-            failedCriteria: []
+                'An approved Freeship Card is required before you can apply for a scholarship.',
+            failedCriteria: [],
+            freeshipCardApproved: false
         };
     }
+
+    const personal = freeshipCard.personalDetails || {};
+    const courseDetails = freeshipCard.courseDetails?.presentlyStudying || {};
+    const details = {
+        course: courseDetails.course || '',
+        department: courseDetails.branch || '',
+        category: personal.category || '',
+        familyIncome: personal.annualFamilyIncome,
+        previousPercentage: applicantDetails?.previousPercentage
+    };
+    const normalize = (value) => String(value ?? '').trim().toLowerCase();
 
 
     const failedCriteria = [];
@@ -127,10 +135,14 @@ const checkStudentEligibility = async (
 
         const eligible =
             scholarship.eligibleCourses.includes(
-                studentProfile.course
+                normalize(details.course)
             );
 
-        if (!eligible) {
+        const courseMatch = scholarship.eligibleCourses.some(
+            (course) => normalize(course) === normalize(details.course)
+        );
+
+        if (!eligible && !courseMatch) {
 
             failedCriteria.push(
                 `Course must be one of: ${scholarship.eligibleCourses.join(
@@ -154,10 +166,14 @@ const checkStudentEligibility = async (
 
         const eligible =
             scholarship.eligibleDepartments.includes(
-                studentProfile.department
+                details.department
             );
 
-        if (!eligible) {
+        const departmentMatch = scholarship.eligibleDepartments.some(
+            (department) => normalize(department) === normalize(details.department)
+        );
+
+        if (!eligible && !departmentMatch) {
 
             failedCriteria.push(
                 `Department must be one of: ${scholarship.eligibleDepartments.join(
@@ -181,10 +197,14 @@ const checkStudentEligibility = async (
 
         const eligible =
             scholarship.eligibleCategories.includes(
-                studentProfile.category
+                details.category
             );
 
-        if (!eligible) {
+        const categoryMatch = scholarship.eligibleCategories.some(
+            (category) => normalize(category) === normalize(details.category)
+        );
+
+        if (!eligible && !categoryMatch) {
 
             failedCriteria.push(
                 `Category must be one of: ${scholarship.eligibleCategories.join(
@@ -206,7 +226,7 @@ const checkStudentEligibility = async (
     ) {
 
         const percentage =
-            studentProfile.previousPercentage;
+            details.previousPercentage;
 
         if (
             percentage === null ||
@@ -246,7 +266,7 @@ const checkStudentEligibility = async (
     ) {
 
         const familyIncome =
-            studentProfile.familyIncome;
+            details.familyIncome;
 
         if (
             familyIncome === null ||
@@ -282,13 +302,21 @@ const checkStudentEligibility = async (
         failedCriteria.length > 0
     ) {
 
+        const needsApplicationDetails =
+            failedCriteria.length === 1 &&
+            failedCriteria.includes('Previous percentage is required.');
+
         return {
             eligible: false,
 
             reason:
-                'Student does not meet all eligibility criteria.',
+                needsApplicationDetails
+                    ? 'Enter your academic result details in the scholarship application to complete the eligibility check.'
+                    : 'Student does not meet all eligibility criteria.',
 
             failedCriteria,
+            freeshipCardApproved: true,
+            needsApplicationDetails,
 
             scholarship: {
                 id:
@@ -312,6 +340,8 @@ const checkStudentEligibility = async (
             'Student meets all eligibility criteria.',
 
         failedCriteria: [],
+        freeshipCardApproved: true,
+        needsApplicationDetails: false,
 
         scholarship: {
             id:

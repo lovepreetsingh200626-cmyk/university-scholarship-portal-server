@@ -180,7 +180,8 @@ const studentProfileSchema =
         },
 
         {
-            timestamps: true
+            timestamps: true,
+            strict: true
         }
     );
 
