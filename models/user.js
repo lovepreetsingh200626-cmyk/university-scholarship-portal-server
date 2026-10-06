@@ -63,6 +63,16 @@ const userSchema = new mongoose.Schema(
             maxlength: 200
         },
 
+        adminId: {
+            type: String,
+            unique: true,
+            sparse: true,
+            trim: true,
+            uppercase: true,
+            minlength: 6,
+            maxlength: 30
+        },
+
         mustChangePassword: {
             type: Boolean,
             default: false
@@ -113,6 +123,13 @@ const userSchema = new mongoose.Schema(
             select: false,
             default: null
         },
+
+        adminDeletionOTPHash: { type: String, select: false, default: '' },
+        adminDeletionOTPExpiresAt: { type: Date, select: false, default: null },
+        adminDeletionOTPAttempts: { type: Number, select: false, default: 0 },
+        adminDeletionOTPSentAt: { type: Date, select: false, default: null },
+        adminDeletionTargetType: { type: String, select: false, default: '' },
+        adminDeletionTargetIds: { type: [String], select: false, default: [] },
 
         /* ========================================================
            ACCOUNT STATUS

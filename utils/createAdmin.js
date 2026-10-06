@@ -1,6 +1,7 @@
 const dns = require('dns');
 const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 dotenv.config();
 
@@ -28,21 +29,19 @@ const connectDB =
 ============================================================ */
 
 const User =
-    require('../models/User');
+    require('../models/user');
 
 
 /* ============================================================
    ADMIN DETAILS
 ============================================================ */
 
-const ADMIN_NAME =
-    'University Administrator';
+const ADMIN_NAME = process.env.BOOTSTRAP_ADMIN_NAME;
 
-const ADMIN_EMAIL =
-    'admin@university.edu';
+const ADMIN_EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
 
-const ADMIN_PASSWORD =
-    'Admin@12345';
+const ADMIN_MOBILE = process.env.BOOTSTRAP_ADMIN_MOBILE;
+const ADMIN_PASSWORD = process.env.BOOTSTRAP_ADMIN_PASSWORD;
 
 
 /* ============================================================
@@ -52,6 +51,10 @@ const ADMIN_PASSWORD =
 const createAdmin = async () => {
 
     try {
+
+        if (!ADMIN_NAME || !ADMIN_EMAIL || !/^\d{10}$/.test(ADMIN_MOBILE || '') || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12) {
+            throw new Error('Set BOOTSTRAP_ADMIN_NAME, BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_MOBILE and a 12+ character BOOTSTRAP_ADMIN_PASSWORD in the server environment.');
+        }
 
         /* --------------------------------------------------------
            CONNECT TO MONGODB
@@ -85,6 +88,10 @@ const createAdmin = async () => {
                 email: ADMIN_EMAIL
             });
 
+        if (admin) {
+            throw new Error('An account already exists for this bootstrap email. The bootstrap command will not reset existing credentials.');
+        }
+
 
         /* --------------------------------------------------------
            CREATE ADMIN IF IT DOES NOT EXIST
@@ -92,10 +99,13 @@ const createAdmin = async () => {
 
         if (!admin) {
 
-            admin =
-                await User.create({
+                admin =
+                    await User.create({
                     name:
                         ADMIN_NAME,
+
+                    adminId:
+                        `ADM${crypto.randomBytes(5).toString('hex').toUpperCase()}`,
 
                     email:
                         ADMIN_EMAIL,
@@ -107,7 +117,7 @@ const createAdmin = async () => {
                         'admin',
 
                     mobile:
-                        '',
+                        ADMIN_MOBILE,
 
                     isActive:
                         true
@@ -225,6 +235,10 @@ const createAdmin = async () => {
 
         console.log(
             `Email: ${savedAdmin.email}`
+        );
+
+        console.log(
+            `Admin ID: ${savedAdmin.adminId}`
         );
 
         console.log(

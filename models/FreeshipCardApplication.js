@@ -4,7 +4,10 @@ const courseSchema = new mongoose.Schema(
     {
         course: { type: String, trim: true, maxlength: 120, default: '' },
         branch: { type: String, trim: true, maxlength: 120, default: '' },
-        year: { type: String, trim: true, maxlength: 40, default: '' }
+        year: { type: String, trim: true, maxlength: 40, default: '' },
+        faculty: { type: String, trim: true, maxlength: 120, default: '' },
+        facultyId: { type: String, trim: true, maxlength: 30, default: '' },
+        academicSession: { type: String, trim: true, maxlength: 20, default: '' }
     },
     { _id: false }
 );
@@ -48,6 +51,7 @@ const freeshipCardApplicationSchema = new mongoose.Schema(
             tehsil: { type: String, trim: true, maxlength: 120, default: '' },
             district: { type: String, trim: true, maxlength: 120, default: '' },
             state: { type: String, trim: true, maxlength: 100, default: '' },
+            domicileState: { type: String, trim: true, maxlength: 100, default: '' },
             pinCode: { type: String, trim: true, maxlength: 10, default: '' }
         },
         courseDetails: {

@@ -1,9 +1,11 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 
 const {
     getAdminProfile,
     updateAdminProfile,
-    changeAdminPassword
+    changeAdminPassword,
+    createAdminAccount
 } = require('../controllers/adminSettingsController');
 
 const {
@@ -13,6 +15,13 @@ const {
 
 
 const router = express.Router();
+const adminCreationLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many administrator creation attempts. Try again later.' }
+});
 
 
 /* ============================================================
@@ -59,6 +68,14 @@ router.put(
     protect,
     adminOnly,
     changeAdminPassword
+);
+
+router.post(
+    '/admins',
+    protect,
+    adminOnly,
+    adminCreationLimiter,
+    createAdminAccount
 );
 
 

@@ -31,6 +31,9 @@ const adminStudentRoutes =
 const adminSettingsRoutes =
     require('./routes/adminSettingsRoutes');
 
+const adminDeletionRoutes =
+    require('./routes/adminDeletionRoutes');
+
 const studentProfileRoutes =
     require('./routes/studentProfileRoutes');
 
@@ -420,6 +423,12 @@ app.use(
 app.use(
     '/api/admin/settings',
     adminSettingsRoutes
+);
+
+
+app.use(
+    '/api/admin/deletion',
+    adminDeletionRoutes
 );
 
 

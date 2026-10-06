@@ -183,6 +183,7 @@ const saveMyApplication = async (req, res) => {
             tehsil: text(personal.tehsil, 120),
             district: text(personal.district, 120),
             state: text(personal.state, 100),
+            domicileState: text(personal.domicileState, 100),
             pinCode: text(personal.pinCode, 10)
         };
         Object.entries(updatedPersonal).forEach(([key, value]) => {
@@ -192,7 +193,10 @@ const saveMyApplication = async (req, res) => {
         const course = (value = {}) => ({
             course: text(value.course, 120),
             branch: text(value.branch, 120),
-            year: text(value.year, 40)
+            year: text(value.year, 40),
+            faculty: text(value.faculty, 120),
+            facultyId: text(value.facultyId, 30),
+            academicSession: text(value.academicSession, 20)
         });
         const answer = (value) => {
             if (value === true || value === 'yes') return true;
@@ -346,6 +350,7 @@ const submitApplication = async (req, res) => {
             ['tehsil', personal.tehsil],
             ['district', personal.district],
             ['state', personal.state],
+            ['domicile State / UT', personal.domicileState],
             ['PIN code', personal.pinCode]
         ];
         const missing = requiredFields.filter(([, value]) => value === '' || value === null || value === undefined).map(([label]) => label);
@@ -356,6 +361,7 @@ const submitApplication = async (req, res) => {
         ]) {
             if (!course?.course || !course?.branch || !course?.year) missing.push(label);
         }
+        if (!courses.presentlyStudying?.academicSession) missing.push('present programme cohort / batch');
         const uploadedTypes = new Set(application.documents.map((document) => document.documentType));
         const missingDocuments = REQUIRED_DOCUMENTS.filter((type) => !uploadedTypes.has(type));
         if (missing.length || missingDocuments.length) {
@@ -426,7 +432,7 @@ const downloadApplicationPerforma = async (req, res) => {
         addSection(page, '02. ADDRESS AND COURSE HISTORY', 515, { fill: '#16766E' });
         addPairRow(page, 489, 23, { label: 'Village / Address', value: personal.village }, { label: 'Post Office', value: personal.postOffice });
         addPairRow(page, 466, 23, { label: 'Tehsil', value: personal.tehsil }, { label: 'District', value: personal.district });
-        addPairRow(page, 443, 23, { label: 'State', value: personal.state }, { label: 'PIN Code', value: personal.pinCode });
+        addPairRow(page, 443, 23, { label: 'Address State / PIN', value: [personal.state, personal.pinCode].filter(Boolean).join(' / ') }, { label: 'Domicile State / UT', value: personal.domicileState }, { labelSize: 6.8, valueSize: 7.2 });
         addFullRow(page, 420, 23, 'Present Course', coursesText(courses.presentlyStudying), { labelWidth: 127, valueSize: 7.8 });
         addFullRow(page, 397, 23, 'Previous Class / Course', coursesText(courses.previousClassStudied), { labelWidth: 127, valueSize: 7.8 });
 

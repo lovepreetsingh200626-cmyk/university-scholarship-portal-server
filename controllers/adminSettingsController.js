@@ -4,6 +4,7 @@ const {
     hashPassword,
     comparePassword
 } = require('../utils/auth');
+const { ensureAdminId, generateAdminId } = require('../utils/adminIdentity');
 
 
 /* ============================================================
@@ -23,9 +24,8 @@ const getAdminProfile = async (
                 role: 'admin'
             })
                 .select(
-                    'name email mobile isActive createdAt updatedAt'
-                )
-                .lean();
+                    'name email mobile adminId isActive createdAt updatedAt'
+                );
 
 
         if (!admin) {
@@ -40,6 +40,8 @@ const getAdminProfile = async (
             });
 
         }
+
+        await ensureAdminId(admin);
 
 
         return res.status(200).json({
@@ -646,6 +648,53 @@ const changeAdminPassword = async (
 };
 
 
+const createAdminAccount = async (req, res) => {
+    const { name, email, mobile, password } = req.body || {};
+    const cleanName = typeof name === 'string' ? name.trim() : '';
+    const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const cleanMobile = typeof mobile === 'string' ? mobile.trim() : '';
+    if (cleanName.length < 2 || cleanName.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 254) {
+        return res.status(400).json({ success: false, message: 'Enter a valid administrator name and email address.' });
+    }
+    if (!/^\d{10}$/.test(cleanMobile)) {
+        return res.status(400).json({ success: false, message: 'Administrator mobile number must contain exactly 10 digits.' });
+    }
+    if (typeof password !== 'string' || password.length < 12 || password.length > 128) {
+        return res.status(400).json({ success: false, message: 'Set an initial password between 12 and 128 characters.' });
+    }
+    try {
+        let created;
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            const adminId = generateAdminId();
+            try {
+                created = await User.create({
+                    name: cleanName,
+                    email: cleanEmail,
+                    mobile: cleanMobile,
+                    adminId,
+                    password: await hashPassword(password),
+                    role: 'admin',
+                    isActive: true
+                });
+                break;
+            } catch (error) {
+                if (error?.code === 11000 && error.keyPattern?.adminId) continue;
+                if (error?.code === 11000) return res.status(409).json({ success: false, message: 'This email is already attached to an account.' });
+                throw error;
+            }
+        }
+        if (!created) throw new Error('Unable to generate a unique administrator ID.');
+        return res.status(201).json({
+            success: true,
+            message: 'Administrator account created. Share the Admin ID and initial password securely with the new administrator.',
+            admin: { id: created._id, name: created.name, email: created.email, mobile: created.mobile, adminId: created.adminId }
+        });
+    } catch (error) {
+        console.error('Create admin account error:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to create the administrator account.' });
+    }
+};
+
 /* ============================================================
    EXPORTS
 ============================================================ */
@@ -656,6 +705,7 @@ module.exports = {
 
     updateAdminProfile,
 
-    changeAdminPassword
+    changeAdminPassword,
+    createAdminAccount
 
 };

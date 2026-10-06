@@ -908,28 +908,34 @@ const changePassword = async (req, res) => {
 ============================================================ */
 
 const requestPasswordReset = async (req, res) => {
+    const accountRole = req.body?.accountRole === 'admin' ? 'admin' : 'student';
+    const accountId = accountRole === 'admin' ? req.body?.adminId : req.body?.studentId;
+    const normalizedId = typeof accountId === 'string' ? accountId.trim().toUpperCase() : '';
+    const mobile = typeof req.body?.mobile === 'string' ? req.body.mobile.trim() : '';
     const email = typeof req.body?.email === 'string'
         ? req.body.email.trim().toLowerCase()
         : '';
 
-    if (!isValidEmail(email) || email.length > 254) {
-        return res.status(400).json({ success: false, message: 'Enter the email address registered to your student account.' });
+    if (!normalizedId || normalizedId.length > 30 || !isValidMobile(mobile) || !isValidEmail(email) || email.length > 254) {
+        return res.status(400).json({ success: false, message: `Enter your ${accountRole === 'admin' ? 'Admin ID' : 'Student ID'}, 10-digit mobile number, and registered email address.` });
     }
     if (!isEmailDeliveryConfigured()) {
         return res.status(503).json({ success: false, message: 'Email recovery is not configured yet. Contact the portal administrator.' });
     }
 
-    const genericMessage = 'If an active student account uses this email, a recovery code will arrive shortly.';
     try {
-        const user = await User.findOne({ email, role: 'student' }).select(
+        const identityQuery = accountRole === 'admin'
+            ? { adminId: normalizedId, mobile, email, role: 'admin', isActive: true }
+            : { studentId: normalizedId, mobile, email, role: 'student', isActive: true };
+        const user = await User.findOne(identityQuery).select(
             '+passwordResetOTPHash +passwordResetOTPExpiresAt +passwordResetOTPAttempts +passwordResetOTPSentAt'
         );
         if (!user || !user.isActive) {
-            return res.json({ success: true, message: genericMessage });
+            return res.status(400).json({ success: false, message: `The ${accountRole === 'admin' ? 'Admin ID' : 'Student ID'}, mobile number, and email do not match an active ${accountRole} account.` });
         }
 
         if (user.passwordResetOTPSentAt && Date.now() - user.passwordResetOTPSentAt.getTime() < 60 * 1000) {
-            return res.json({ success: true, message: genericMessage });
+            return res.status(429).json({ success: false, message: 'A recovery code was sent recently. Please wait one minute before requesting another.' });
         }
 
         const otp = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
@@ -945,9 +951,10 @@ const requestPasswordReset = async (req, res) => {
             clearRecoveryOTP(user);
             await user.save();
             console.error('Password recovery email delivery failed:', mailError.message);
+            return res.status(503).json({ success: false, message: 'We verified your details, but could not send the recovery code. Please try again later.' });
         }
 
-        return res.json({ success: true, message: genericMessage });
+        return res.json({ success: true, message: 'Your details are verified. Check your registered email inbox for the recovery code. If it is not there, check your spam folder.' });
     } catch (error) {
         console.error('Password recovery request error:', error.message);
         return res.status(500).json({ success: false, message: 'Unable to request a recovery code right now.' });
@@ -955,21 +962,28 @@ const requestPasswordReset = async (req, res) => {
 };
 
 const resetPasswordWithOTP = async (req, res) => {
+    const accountRole = req.body?.accountRole === 'admin' ? 'admin' : 'student';
+    const accountId = accountRole === 'admin' ? req.body?.adminId : req.body?.studentId;
+    const normalizedId = typeof accountId === 'string' ? accountId.trim().toUpperCase() : '';
+    const mobile = typeof req.body?.mobile === 'string' ? req.body.mobile.trim() : '';
     const email = typeof req.body?.email === 'string'
         ? req.body.email.trim().toLowerCase()
         : '';
     const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
     const newPassword = req.body?.newPassword;
 
-    if (!isValidEmail(email) || email.length > 254 || !/^\d{6}$/.test(otp)) {
-        return res.status(400).json({ success: false, message: 'Enter a valid email address and the 6-digit recovery code.' });
+    if (!normalizedId || normalizedId.length > 30 || !isValidMobile(mobile) || !isValidEmail(email) || email.length > 254 || !/^\d{6}$/.test(otp)) {
+        return res.status(400).json({ success: false, message: `Enter your ${accountRole === 'admin' ? 'Admin ID' : 'Student ID'}, 10-digit mobile number, registered email, and 6-digit recovery code.` });
     }
     if (!isValidPassword(newPassword)) {
         return res.status(400).json({ success: false, message: 'New password must contain between 8 and 128 characters.' });
     }
 
     try {
-        const user = await User.findOne({ email, role: 'student' }).select(
+        const identityQuery = accountRole === 'admin'
+            ? { adminId: normalizedId, mobile, email, role: 'admin', isActive: true }
+            : { studentId: normalizedId, mobile, email, role: 'student', isActive: true };
+        const user = await User.findOne(identityQuery).select(
             '+passwordResetOTPHash +passwordResetOTPExpiresAt +passwordResetOTPAttempts +passwordResetOTPSentAt'
         );
         const invalidCode = () => res.status(400).json({ success: false, message: 'The recovery code is invalid or expired. Request a new code and try again.' });
