@@ -17,6 +17,24 @@ const ALLOWED_STATUS = [
 const MAX_AMOUNT =
     1000000000;
 
+const SCHOLARSHIP_SCHEME_CATEGORIES = [
+    'Pre-Matric',
+    'Post-Matric',
+    'Top Class',
+    'Merit-cum-Means (MCM)',
+    'Post-Matric / Top Class / MCM',
+    'Other NSP Scheme'
+];
+
+const inferSchemeCategory = (name = '') => {
+    const normalized = String(name).toLowerCase();
+    if (/pre[\s-]*matric/.test(normalized)) return 'Pre-Matric';
+    if (/top[\s-]*class/.test(normalized)) return 'Top Class';
+    if (/merit[\s-]*cum[\s-]*means|\bmcm\b/.test(normalized)) return 'Merit-cum-Means (MCM)';
+    if (/post[\s-]*matric/.test(normalized)) return 'Post-Matric';
+    return 'Other NSP Scheme';
+};
+
 
 /* ============================================================
    VALIDATION HELPERS
@@ -136,6 +154,7 @@ const createScholarship = async (
             name,
             description,
             academicYear,
+            schemeCategory,
             eligibleCourses,
             eligibleDepartments,
             eligibleCategories,
@@ -215,6 +234,14 @@ const createScholarship = async (
                 success: false,
                 message:
                     'Academic year is invalid.'
+            });
+        }
+
+        const normalizedSchemeCategory = schemeCategory || inferSchemeCategory(name);
+        if (!SCHOLARSHIP_SCHEME_CATEGORIES.includes(normalizedSchemeCategory)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Select a valid scholarship category / scheme level.'
             });
         }
 
@@ -494,6 +521,9 @@ const createScholarship = async (
 
                 academicYear:
                     academicYear.trim(),
+
+                schemeCategory:
+                    normalizedSchemeCategory,
 
                 eligibleCourses:
                     normalizedCourses,
@@ -791,6 +821,16 @@ const updateScholarship = async (
 
             scholarship.academicYear =
                 req.body.academicYear.trim();
+        }
+
+        if (req.body.schemeCategory !== undefined) {
+            if (!SCHOLARSHIP_SCHEME_CATEGORIES.includes(req.body.schemeCategory)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Select a valid scholarship category / scheme level.'
+                });
+            }
+            scholarship.schemeCategory = req.body.schemeCategory;
         }
 
 

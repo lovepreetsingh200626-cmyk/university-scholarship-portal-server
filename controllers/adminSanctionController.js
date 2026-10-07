@@ -95,6 +95,7 @@ const sanctionApplication = async (
         application.status =
             'SANCTIONED';
 
+        application.sanctionedBy = req.user.id;
         application.sanctionedAt =
             new Date();
 

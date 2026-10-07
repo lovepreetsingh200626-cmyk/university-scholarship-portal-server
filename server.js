@@ -46,6 +46,15 @@ const applicationRoutes =
 const freeshipCardRoutes =
     require('./routes/freeshipCardRoutes');
 
+const institutionRoutes =
+    require('./routes/institutionRoutes');
+
+const villageRoutes =
+    require('./routes/villageRoutes');
+
+const dntRoutes =
+    require('./routes/dntRoutes');
+
 
 /* ============================================================
    DNS CONFIGURATION
@@ -459,6 +468,21 @@ app.use(
 app.use(
     '/api/freeship-cards',
     freeshipCardRoutes
+);
+
+app.use(
+    '/api/institutions',
+    institutionRoutes
+);
+
+app.use(
+    '/api/villages',
+    villageRoutes
+);
+
+app.use(
+    '/api/dnt',
+    dntRoutes
 );
 
 

@@ -582,6 +582,7 @@ const verifyApplication = async (
                 : '';
 
 
+        application.verifiedBy = req.user.id;
         application.verifiedAt =
             new Date();
 
@@ -724,6 +725,8 @@ const rejectApplication = async (
 
         application.status =
             'REJECTED';
+        application.rejectedBy = req.user.id;
+        application.rejectedAt = new Date();
 
         application.rejectionReason =
             trimmedReason;

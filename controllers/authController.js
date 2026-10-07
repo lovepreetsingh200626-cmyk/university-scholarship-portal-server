@@ -61,11 +61,16 @@ const isValidPassword = (password) => {
 ============================================================ */
 
 const generateStudentId = () => {
-    const year =
-        new Date()
-            .getFullYear()
-            .toString()
-            .slice(-2);
+    const dateParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit'
+    }).formatToParts(new Date());
+    const year = Number(dateParts.find((part) => part.type === 'year')?.value);
+    const month = Number(dateParts.find((part) => part.type === 'month')?.value);
+    // India’s academic year is labeled by its start year (April–March).
+    const academicStartYear = month >= 4 ? year : year - 1;
+    const academicYear = `${academicStartYear}-${String((academicStartYear + 1) % 100).padStart(2, '0')}`;
 
     const randomPart =
         crypto
@@ -73,7 +78,7 @@ const generateStudentId = () => {
             .toString('hex')
             .toUpperCase();
 
-    return `USP${year}${randomPart}`;
+    return `${academicYear}-${randomPart}`;
 };
 
 

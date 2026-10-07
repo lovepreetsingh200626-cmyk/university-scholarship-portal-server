@@ -22,6 +22,7 @@ const cloudinary =
 
 const {
     addDocumentTitle,
+    addApprovalStamp,
     addFooter,
     addFullRow,
     addHeader,
@@ -37,6 +38,9 @@ const {
 const { encryptAadhaar, decryptAadhaar } =
     require('../utils/aadhaarCrypto');
 
+const { getAdminSignature } = require('../utils/adminSignature');
+
+
 const crypto =
     require('crypto');
 
@@ -45,6 +49,8 @@ const path =
 
 const { Readable } =
     require('stream');
+
+const STUDENT_UNDERTAKING_TEXT = 'I declare that all details and documents submitted with this application are true, complete and genuine to the best of my knowledge. I accept responsibility for any information or document that is false or misleading, and understand that the application or benefits may be cancelled or recovered and that further action may be taken under applicable laws and rules in force in India.';
 
 
 /* ============================================================
@@ -357,7 +363,6 @@ const createApplication = async (
         const presentCourse = freeshipCard.courseDetails?.presentlyStudying || {};
         const address = [
             personal.village,
-            personal.postOffice,
             personal.tehsil,
             personal.district,
             personal.state,
@@ -365,21 +370,23 @@ const createApplication = async (
         ].filter(Boolean).join(', ');
         const applicantDetails = {
             fullName: personal.fullName || student?.name || '',
+            nameAsPerDomicileId: personal.fullName || student?.name || '',
             studentId: student?.studentId || personal.applicantId || '',
             registrationNumber: student?.studentId || '',
             applicationType: 'Fresh Application',
             course: presentCourse.course || '',
-            department: presentCourse.branch || '',
-            academicYear: '',
+            academicYear: presentCourse.academicSession || '',
+            presentYear: presentCourse.year || '',
             category: personal.category || '',
             fatherName: personal.fatherName || '',
             motherName: personal.motherName || '',
             dateOfBirth: personal.dateOfBirth || null,
             familyIncome: personal.annualFamilyIncome ?? null,
             aadhaarNumber: personal.aadhaarLastFour ? `XXXXXXXX${personal.aadhaarLastFour}` : '',
-            specialCategory: 'NA',
-            deNotifiedTribes: 'No',
-            tribes: 'NA',
+            specialCategory: 'No',
+            specialCategoryType: '',
+            deNotifiedTribes: String(personal.category || '').trim().toUpperCase() === 'DNT' ? 'Yes' : 'No',
+            tribes: '',
             tehsil: personal.tehsil || '',
             mobile: student?.mobile || personal.mobile || '',
             contactNumbers: student?.mobile || personal.mobile || '',
@@ -388,7 +395,13 @@ const createApplication = async (
             correspondenceAddress: address,
             permanentAddress: address,
             state: personal.state || '',
-            previousQualification: freeshipCard.courseDetails?.lastClassStudied?.course || '',
+            permanentAddressState: personal.state || '',
+            domicileState: personal.domicileState || personal.state || '',
+            homeDistrict: personal.district || '',
+            subDistrict: personal.tehsil || '',
+            village: personal.village || '',
+            pinCode: personal.pinCode || '',
+
             declarationAccepted: false
         };
 
@@ -580,7 +593,7 @@ const getApplicationById = async (
                 .select('+aadhaarEncrypted')
                 .populate(
                     'scholarship',
-                    'name description academicYear eligibleCourses eligibleDepartments eligibleCategories minimumPercentage maximumFamilyIncome scholarshipAmount requiredDocuments applicationStartDate applicationEndDate instructions status'
+                    'name schemeCategory description academicYear eligibleCourses eligibleDepartments eligibleCategories minimumPercentage maximumFamilyIncome scholarshipAmount requiredDocuments applicationStartDate applicationEndDate instructions status'
                 )
                 .populate(
                     'student',
@@ -604,10 +617,21 @@ const getApplicationById = async (
         }
 
         const applicationResponse = application.toObject();
+        delete applicationResponse.applicantDetails?.department;
         const fullAadhaar = decryptAadhaar(application.aadhaarEncrypted);
         delete applicationResponse.aadhaarEncrypted;
+        const verifiedFreeship = await FreeshipCardApplication.findOne({
+            student: req.user.id,
+            status: 'APPROVED'
+        }).select('personalDetails.fullName').lean();
+        const verifiedName = verifiedFreeship?.personalDetails?.fullName
+            || applicationResponse.applicantDetails.nameAsPerDomicileId
+            || applicationResponse.applicantDetails.fullName;
+        applicationResponse.applicantDetails.nameAsPerDomicileId = verifiedName;
+        applicationResponse.applicantDetails.fullName = verifiedName;
         if (fullAadhaar) {
             applicationResponse.applicantDetails.aadhaarNumber = fullAadhaar;
+            applicationResponse.applicantDetails.memberNumber = fullAadhaar;
         }
 
         return res.status(200).json({
@@ -1141,7 +1165,7 @@ const updateApplication = async (
                 student:
                     req.user.id
 
-            });
+            }).select('+aadhaarEncrypted');
 
 
         if (
@@ -1188,7 +1212,6 @@ const updateApplication = async (
 
         }
 
-
         /*
            Only these applicant fields can
            be modified by the student.
@@ -1198,37 +1221,48 @@ const updateApplication = async (
         */
 
         const allowedFields = [
-            'applicationType',
-            'academicYear',
-            'currentSemester',
+            'presentRollNumber',
+            'permanentAddressState',
             'gender',
+            'maritalStatus',
+            'parentProfession',
             'religion',
-            'specialCategory',
+            'divyangjan',
             'deNotifiedTribes',
             'tribes',
             'institute',
+            'instituteState',
+            'instituteDistrict',
             'tehsil',
+            'classStartDate',
+            'presentYear',
+            'section',
+            'modeOfStudy',
             'hosteller',
+            'enrollmentYear',
+            'previousBoard',
+            'previousPassingYear',
+            'class10Percentage',
+            'class12Board',
+            'class12PassingYear',
+            'class12RollNumber',
+            'class12Percentage',
+            'competitiveExamQualified',
+            'competitiveExamConductedBy',
+            'competitiveExamRollNumber',
+            'competitiveExamYear',
+            'domicileState',
+            'domicileStateIdentificationNumber',
+            'homeDistrict',
+            'subDistrict',
+            'village',
+            'pinCode',
             'class10Board',
             'class10Session',
             'class10RollNumber',
             'enrollment',
-            'admissionDate',
-            'attendance',
-            'admitCard',
-            'examinationYear',
-            'promoted',
-            'correspondenceAddress',
             'permanentAddress',
-            'contactNumbers',
-            'bankAddress',
-            'bankBranchName',
             'previousPercentage',
-            'previousQualification',
-            'bankAccountNumber',
-            'bankName',
-            'ifscCode',
-            'declarationAccepted'
         ];
 
 
@@ -1251,47 +1285,26 @@ const updateApplication = async (
             }
         );
 
+        if ([
+            'village',
+            'subDistrict',
+            'homeDistrict',
+            'permanentAddressState',
+            'pinCode'
+        ].some((field) => req.body[field] !== undefined)) {
+            application.applicantDetails.permanentAddress = [
+                application.applicantDetails.village,
+                application.applicantDetails.subDistrict,
+                application.applicantDetails.homeDistrict,
+                application.applicantDetails.permanentAddressState,
+                application.applicantDetails.pinCode
+            ].map((part) => String(part || '').trim()).filter(Boolean).join(', ');
+        }
 
-        /* --------------------------------------------------------
-           CURRENT SEMESTER VALIDATION
-        -------------------------------------------------------- */
-
-        if (
-            req.body.currentSemester !==
-            undefined
-        ) {
-
-            const semester =
-                Number(
-                    req.body.currentSemester
-                );
-
-
-            if (
-                !Number.isInteger(
-                    semester
-                ) ||
-                semester < 1 ||
-                semester > 20
-            ) {
-
-                return res.status(400).json({
-
-                    success: false,
-
-                    message:
-                        'Current semester must be a valid number.'
-
-                });
-
-            }
-
-
-            application
-                .applicantDetails
-                .currentSemester =
-                semester;
-
+        if (req.body.competitiveExamQualified === 'No') {
+            application.applicantDetails.competitiveExamConductedBy = '';
+            application.applicantDetails.competitiveExamRollNumber = '';
+            application.applicantDetails.competitiveExamYear = '';
         }
 
 
@@ -1349,9 +1362,40 @@ const updateApplication = async (
             application.applicantDetails.attendance = attendance;
         }
 
+        ['class10Percentage', 'class12Percentage'].forEach((field) => {
+            if (req.body[field] !== undefined && req.body[field] !== null && req.body[field] !== '') {
+                const percentage = Number(req.body[field]);
+                application.applicantDetails[field] = percentage;
+            }
+        });
+        for (const field of ['class10Percentage', 'class12Percentage']) {
+            if (req.body[field] !== undefined && req.body[field] !== null && req.body[field] !== '') {
+                const percentage = Number(req.body[field]);
+                if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+                    return res.status(400).json({ success: false, message: `${field} must be between 0 and 100.` });
+                }
+            }
+        }
+
 
         await application.save();
 
+        const applicationResponse = application.toObject();
+        const verifiedFreeship = await FreeshipCardApplication.findOne({
+            student: req.user.id,
+            status: 'APPROVED'
+        }).select('personalDetails.fullName').lean();
+        const verifiedName = verifiedFreeship?.personalDetails?.fullName
+            || applicationResponse.applicantDetails.nameAsPerDomicileId
+            || applicationResponse.applicantDetails.fullName;
+        applicationResponse.applicantDetails.nameAsPerDomicileId = verifiedName;
+        applicationResponse.applicantDetails.fullName = verifiedName;
+        const fullAadhaar = decryptAadhaar(application.aadhaarEncrypted);
+        delete applicationResponse.aadhaarEncrypted;
+        if (fullAadhaar) {
+            applicationResponse.applicantDetails.aadhaarNumber = fullAadhaar;
+            applicationResponse.applicantDetails.memberNumber = fullAadhaar;
+        }
 
         return res.status(200).json({
 
@@ -1360,7 +1404,7 @@ const updateApplication = async (
             message:
                 'Application updated successfully.',
 
-            application
+            application: applicationResponse
 
         });
 
@@ -2098,6 +2142,13 @@ const submitApplication = async (
 
         }
 
+        if (req.body?.undertakingAccepted !== true) {
+            return res.status(400).json({
+                success: false,
+                message: 'Accept the student undertaking before submitting the application.'
+            });
+        }
+
 
         const scholarship =
             application.scholarship;
@@ -2168,45 +2219,50 @@ const submitApplication = async (
         const details =
             application.applicantDetails;
 
+        if (!['Yes', 'No'].includes(details.competitiveExamQualified)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Select Yes or No for Competitive Exam Qualified.',
+                missingFields: ['competitiveExamQualified']
+            });
+        }
+
 
         const requiredFields = [
             'fullName',
-            'studentId',
-            'applicationType',
             'gender',
+            'maritalStatus',
             'fatherName',
             'motherName',
             'familyIncome',
             'dateOfBirth',
             'category',
+            ...(details.deNotifiedTribes === 'Yes'
+                || ['ST', 'SCHEDULED TRIBE', 'SCHEDULED TRIBES', 'DNT'].includes(String(details.category || '').trim().toUpperCase())
+                ? ['tribes']
+                : []),
             'religion',
-            'specialCategory',
+            'parentProfession',
+            'divyangjan',
             'aadhaarNumber',
             'deNotifiedTribes',
-            'tribes',
             'institute',
             'tehsil',
             'course',
-            'academicYear',
             'hosteller',
-            'class10Board',
-            'class10Session',
-            'class10RollNumber',
-            'enrollment',
-            'admissionDate',
-            'attendance',
-            'admitCard',
-            'examinationYear',
-            'promoted',
-            'correspondenceAddress',
             'permanentAddress',
-            'contactNumbers',
+            'domicileState',
+            'permanentAddressState',
+            'homeDistrict',
+            'subDistrict',
+            'village',
+            'pinCode',
             'emailAddress',
-            'bankAccountNumber',
-            'bankName',
-            'ifscCode',
-            'bankAddress',
-            'bankBranchName'
+            'mobile',
+            'competitiveExamQualified',
+            ...(details.competitiveExamQualified === 'Yes'
+                ? ['competitiveExamConductedBy', 'competitiveExamRollNumber', 'competitiveExamYear']
+                : [])
         ];
 
 
@@ -2250,14 +2306,6 @@ const submitApplication = async (
 
             });
 
-        }
-
-        if (!details.declarationAccepted) {
-            return res.status(400).json({
-                success: false,
-                message: 'Accept the declaration before submitting the application.',
-                missingFields: ['declarationAccepted']
-            });
         }
 
 
@@ -2372,6 +2420,13 @@ const submitApplication = async (
         application.submittedAt =
             new Date();
 
+        application.undertakingAcceptance = {
+            accepted: true,
+            statement: STUDENT_UNDERTAKING_TEXT,
+            acceptedAt: application.submittedAt,
+            acceptedBy: req.user.id
+        };
+
 
         application.correctionRemarks =
             '';
@@ -2451,7 +2506,10 @@ async function downloadApplicationPdf(req, res) {
         if (req.user.role !== 'admin') query.student = req.user.id;
         const application = await ScholarshipApplication.findOne(query)
             .select('+aadhaarEncrypted')
-            .populate('scholarship', 'name')
+            .populate('scholarship', 'name schemeCategory')
+            .populate({ path: 'sanctionedBy', select: 'name +adminSignatureData +adminSignatureType' })
+            .populate({ path: 'verifiedBy', select: 'name +adminSignatureData +adminSignatureType' })
+            .populate({ path: 'rejectedBy', select: 'name +adminSignatureData +adminSignatureType' })
             .lean();
 
         if (!application) {
@@ -2459,65 +2517,184 @@ async function downloadApplicationPdf(req, res) {
         }
 
         const details = application.applicantDetails || {};
-        const printedAadhaar = decryptAadhaar(application.aadhaarEncrypted) || details.aadhaarNumber;
-        const value = (item) => item === null || item === undefined || item === '' ? 'Not provided' : String(item);
-        const date = (item) => item ? new Date(item).toLocaleDateString('en-IN') : 'Not provided';
+        const freeshipStudentMatches = [
+            ...(application.student ? [{ student: application.student }] : []),
+            ...(details.studentId ? [{ 'personalDetails.applicantId': details.studentId }] : [])
+        ];
+        const verifiedFreeship = freeshipStudentMatches.length
+            ? await FreeshipCardApplication.findOne({
+                status: 'APPROVED',
+                $or: freeshipStudentMatches
+            })
+            .select('personalDetails.fullName reviewedBy')
+            .populate({ path: 'reviewedBy', select: 'name +adminSignatureData +adminSignatureType' })
+            .sort({ reviewedAt: -1 })
+            .lean()
+            : null;
+        const verifiedName = verifiedFreeship?.personalDetails?.fullName
+            || details.nameAsPerDomicileId
+            || details.fullName;
+        const isRejected = application.status === 'REJECTED';
+        const hasAuthorityDecision = ['VERIFIED', 'SANCTIONED', 'DISBURSED', 'REJECTED'].includes(application.status);
+        const verifiedAdmin = application.status === 'VERIFIED'
+            ? application.verifiedBy
+            : isRejected ? application.rejectedBy : application.sanctionedBy;
+        const canShowAuthorityStamp = hasAuthorityDecision;
+        const recordedSignature = verifiedAdmin?.adminSignatureData && ['image/png', 'image/jpeg'].includes(verifiedAdmin.adminSignatureType)
+            ? { name: verifiedAdmin.name || 'Portal Administrator', image: { data: Buffer.from(verifiedAdmin.adminSignatureData), type: verifiedAdmin.adminSignatureType } }
+            : null;
+        const freeshipReviewer = verifiedFreeship?.reviewedBy;
+        const freeshipReviewerSignature = freeshipReviewer?.adminSignatureData && ['image/png', 'image/jpeg'].includes(freeshipReviewer.adminSignatureType)
+            ? { name: freeshipReviewer.name || 'Portal Administrator', image: { data: Buffer.from(freeshipReviewer.adminSignatureData), type: freeshipReviewer.adminSignatureType } }
+            : null;
+        // Prefer the administrator who recorded this decision. The Freeship
+        // PDFs use the reviewer's saved signature even if it is no longer
+        // globally active. Reuse that approved reviewer signature if the
+        // scholarship verifier account has no image saved.
+        const portalSignature = recordedSignature || (canShowAuthorityStamp && freeshipReviewerSignature) || (canShowAuthorityStamp
+            ? (await getAdminSignature(verifiedAdmin?._id) || await getAdminSignature())
+            : null);
+        const signatureName = portalSignature?.name || verifiedAdmin?.name || 'Portal Administrator';
+        const approvalTimestamp = application.status === 'VERIFIED' ? application.verifiedAt : isRejected ? application.rejectedAt : application.sanctionedAt;
+        let printedAadhaar = details.aadhaarNumber || '';
+        try {
+            printedAadhaar = decryptAadhaar(application.aadhaarEncrypted) || printedAadhaar;
+        } catch (aadhaarError) {
+            console.warn('Application PDF Aadhaar decryption failed; using the saved applicant detail:', aadhaarError.message);
+        }
+        const date = (item) => item ? new Date(item).toLocaleDateString('en-IN') : '';
+        const dateTime = (item) => item ? new Date(item).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Not applicable';
+        const schemeName = String(application.scholarship?.name || '').toLowerCase();
+        const schemeCategory = application.scholarship?.schemeCategory
+            || (/pre[\s-]*matric/.test(schemeName) ? 'Pre-Matric'
+                : /top[\s-]*class/.test(schemeName) ? 'Top Class'
+                    : /merit[\s-]*cum[\s-]*means|\bmcm\b/.test(schemeName) ? 'Merit-cum-Means (MCM)'
+                        : /post[\s-]*matric/.test(schemeName) ? 'Post-Matric' : 'Other NSP Scheme');
         const page = [];
         addHeader(page, 'scholarship');
-        addDocumentTitle(page, 'SCHOLARSHIP APPLICATION FORM', 'PERSONAL, ACADEMIC, CONTACT AND BANK DETAILS');
-        addMetadataStrip(page, 685, [
-            { label: 'Application Number', value: application.applicationNumber },
-            { label: 'Application Type', value: details.applicationType },
-            { label: 'Scheme Name', value: application.scholarship?.name }
+        addDocumentTitle(page, 'SCHOLARSHIP APPLICATION FORM', 'APPLICANT, ACADEMIC AND ADDRESS DETAILS');
+        addMetadataStrip(page, 683, [
+            { label: 'Application ID', value: application.applicationNumber },
+            { label: 'Applied for Scheme', value: application.scholarship?.name },
+            { label: 'Registration Date', value: date(application.createdAt) }
         ]);
-        addMetadataStrip(page, 656, [
-            { label: 'Student ID', value: details.studentId },
-            { label: 'Status', value: application.status },
-            { label: 'Generated', value: new Date().toLocaleDateString('en-IN') }
-        ]);
+        const pairStyle = { labelSize: 5.5, valueSize: 6.2, minValueSize: 4.8, labelWidth: 82 };
+        let y = 663;
+        let hasSection = false;
+        const section = (title) => {
+            if (hasSection) y -= 13;
+            addSection(page, title, y, { height: 14, size: 7.2 });
+            y -= 17;
+            hasSection = true;
+        };
+        const pair = (left, right = { label: '', value: '' }, rowStyle = pairStyle) => {
+            addPairRow(page, y - 13, 14, left, right, rowStyle);
+            y -= 15;
+        };
+        const full = (label, value, height = 15, rowOptions = {}) => {
+            addFullRow(page, y - height + 1, height, label, value, {
+                labelWidth: 110, labelSize: 5.4, valueSize: 6.1, leading: 7,
+                wrapAt: 110, ...rowOptions
+            });
+            y -= height + 2;
+        };
 
-        addSection(page, 'PERSONAL DETAILS', 634, { height: 17, size: 8.1 });
-        const compactPair = { labelSize: 6.6, valueSize: 7.4, labelWidth: 91 };
-        addPairRow(page, 609, 20, { label: 'Student Name', value: details.fullName }, { label: 'Gender', value: details.gender }, compactPair);
-        addPairRow(page, 588, 20, { label: "Father's Name", value: details.fatherName }, { label: "Mother's Name", value: details.motherName }, compactPair);
-        addPairRow(page, 567, 20, { label: 'Annual Income', value: `Rs. ${value(details.familyIncome)}` }, { label: 'Date of Birth', value: date(details.dateOfBirth) }, compactPair);
-        addPairRow(page, 546, 20, { label: 'Category', value: details.category }, { label: 'Religion', value: details.religion }, compactPair);
-        addPairRow(page, 525, 20, { label: 'Special Category', value: details.specialCategory }, { label: 'Aadhaar (UID) No.', value: printedAadhaar }, { ...compactPair, labelSize: 6.3, valueSize: 7.1 });
-        addPairRow(page, 504, 20, { label: 'De-Notified Tribes', value: details.deNotifiedTribes }, { label: 'Tribes', value: details.tribes }, { ...compactPair, labelSize: 6.3 });
+        section('BASIC DETAILS');
+        [
+            [{ label: 'Student ID', value: details.studentId }, { label: 'Domicile State', value: details.domicileState }],
+            [{ label: 'Scholarship Category', value: schemeCategory }, { label: 'Student Name', value: verifiedName }],
+            [{ label: 'Date of Birth', value: date(details.dateOfBirth) }, { label: 'Gender', value: details.gender }],
+            [{ label: 'Marital Status', value: details.maritalStatus }, { label: 'Community / Category', value: details.category }],
+            [{ label: 'Religion', value: details.religion }, { label: "Parent's Profession", value: details.parentProfession }],
+            [{ label: 'Family Income', value: details.familyIncome }, { label: "Father's Name", value: details.fatherName }],
+            [{ label: "Mother's Name", value: details.motherName }, { label: 'Email', value: details.emailAddress }],
+            [{ label: 'Mobile', value: details.mobile }, { label: 'Aadhaar', value: printedAadhaar }],
+            [{ label: 'DNT', value: details.deNotifiedTribes }, { label: 'DNT / ST Community', value: details.tribes && details.tribes !== 'NA' ? details.tribes : '' }],
+            [{ label: 'Divyangjan', value: details.divyangjan }, { label: '', value: '' }]
+        ].forEach((row) => pair(row[0], row[1]));
 
-        addSection(page, 'ACADEMIC DETAILS', 484, { height: 17, size: 8.1 });
-        addFullRow(page, 462, 19, 'Institute', details.institute, { labelWidth: 105, labelSize: 6.7, valueSize: 7.3, leading: 8.3 });
-        addFullRow(page, 441, 19, 'Course / Branch', [details.course, details.department].filter(Boolean).join(' / '), { labelWidth: 105, labelSize: 6.7, valueSize: 7.3, leading: 8.3 });
-        addPairRow(page, 420, 19, { label: 'Tehsil', value: details.tehsil }, { label: 'Academic Year', value: details.academicYear }, compactPair);
-        addPairRow(page, 399, 19, { label: 'Hosteller', value: details.hosteller }, { label: '10th Class Board', value: details.class10Board }, { ...compactPair, labelSize: 6.3 });
-        addPairRow(page, 378, 19, { label: '10th Class Session', value: details.class10Session }, { label: '10th Roll Number', value: details.class10RollNumber }, { ...compactPair, labelSize: 6.3 });
-        addPairRow(page, 357, 19, { label: 'Enrollment', value: details.enrollment }, { label: 'Admission Date', value: date(details.admissionDate) }, compactPair);
-        addPairRow(page, 336, 19, { label: 'Attendance', value: details.attendance === null || details.attendance === undefined || details.attendance === '' ? '' : `${details.attendance}%` }, { label: 'Admit Card', value: details.admitCard }, compactPair);
-        addPairRow(page, 315, 19, { label: 'Examination Year', value: details.examinationYear }, { label: 'Promoted', value: details.promoted }, compactPair);
-        addFullRow(page, 294, 19, 'Previous Results', [details.previousPercentage === null || details.previousPercentage === undefined ? '' : `${details.previousPercentage}%`, details.previousQualification].filter(Boolean).join(' / '), { labelWidth: 105, labelSize: 6.7, valueSize: 7.3, leading: 8.3 });
+        section('APPLICATION SPECIFIC DETAILS');
+        pair(
+            { label: 'Domicile ID No.', value: details.domicileStateIdentificationNumber },
+            { label: 'Member No.', value: printedAadhaar || details.memberNumber }
+        );
+        full('Name on Domicile ID', verifiedName);
 
-        addSection(page, 'CONTACT DETAILS', 274, { height: 17, size: 8.1 });
-        addFullRow(page, 251, 21, 'Correspondence Address', details.correspondenceAddress, { labelWidth: 120, labelSize: 6.4, valueSize: 7.1, leading: 7.5 });
-        addFullRow(page, 227, 21, 'Permanent Address', details.permanentAddress, { labelWidth: 120, labelSize: 6.4, valueSize: 7.1, leading: 7.5 });
-        addPairRow(page, 206, 19, { label: 'Contact Numbers', value: details.contactNumbers }, { label: 'Email Address', value: details.emailAddress }, { ...compactPair, labelSize: 6.2, valueSize: 7.0 });
+        section('ACADEMIC DETAILS');
+        [
+            [{ label: 'Institute', value: details.institute }, { label: 'Tehsil', value: details.tehsil }],
+            [{ label: 'Course', value: details.course }, { label: 'Course Start', value: date(details.classStartDate) }],
+            [{ label: 'Present Year / Class', value: details.presentYear }, { label: 'Roll No.', value: details.presentRollNumber }],
+            [{ label: 'Section', value: details.section }, { label: 'Enrollment No.', value: details.enrollment }],
+            [{ label: 'Enrollment Year', value: details.enrollmentYear }, { label: 'Study Mode', value: details.modeOfStudy }],
+            [{ label: 'Day Scholar / Hosteller', value: details.hosteller }, { label: 'Previous Board', value: details.previousBoard }],
+            [{ label: 'Previous Passing Year', value: details.previousPassingYear }, { label: 'Previous Percentage', value: details.previousPercentage }],
+            [{ label: '10th Board', value: details.class10Board }, { label: '10th Passing Year', value: details.class10Session }],
+            [{ label: '10th Roll No.', value: details.class10RollNumber }, { label: '10th Percentage', value: details.class10Percentage }],
+            [{ label: '12th Board', value: details.class12Board }, { label: '12th Passing Year', value: details.class12PassingYear }],
+            [{ label: '12th Roll No.', value: details.class12RollNumber }, { label: '12th Percentage', value: details.class12Percentage }],
+            [{ label: 'Competitive Exam', value: details.competitiveExamQualified }, { label: 'Exam Conducted By', value: details.competitiveExamQualified === 'Yes' ? details.competitiveExamConductedBy : '' }],
+            ...(details.competitiveExamQualified === 'Yes'
+                ? [[{ label: 'Exam Roll No.', value: details.competitiveExamRollNumber }, { label: 'Exam Year', value: details.competitiveExamYear }]]
+                : [])
+        ].forEach((row) => pair(row[0], row[1]));
 
-        addSection(page, 'BANK DETAILS', 186, { height: 17, size: 8.1 });
-        addPairRow(page, 165, 19, { label: 'Account Number', value: details.bankAccountNumber }, { label: 'Bank Name', value: details.bankName }, { ...compactPair, labelSize: 6.2, valueSize: 7.0 });
-        addPairRow(page, 144, 19, { label: 'IFSC Code', value: details.ifscCode }, { label: 'Bank Branch Name', value: details.bankBranchName }, { ...compactPair, labelSize: 6.2, valueSize: 7.0 });
-        addFullRow(page, 120, 21, 'Bank Address', details.bankAddress, { labelWidth: 120, labelSize: 6.4, valueSize: 7.1, leading: 7.5 });
+        section('PERMANENT ADDRESS');
+        const addressPairStyle = canShowAuthorityStamp
+            ? { ...pairStyle, x: 32, width: 338, labelWidth: 58, labelSize: 5.1, valueSize: 5.8, minValueSize: 4.5 }
+            : pairStyle;
+        const addressRowOptions = canShowAuthorityStamp
+            ? { width: 338, labelWidth: 67, labelSize: 5.2, valueSize: 5.9, minValueSize: 4.6 }
+            : {};
+        pair(
+            { label: 'Permanent State', value: details.permanentAddressState },
+            { label: 'Home District', value: details.homeDistrict },
+            addressPairStyle
+        );
+        pair(
+            { label: 'Sub District', value: details.subDistrict },
+            { label: 'PIN Code', value: details.pinCode },
+            addressPairStyle
+        );
+        full('Village / Town', details.village, 15, addressRowOptions);
+        full('Address', details.permanentAddress, 25, addressRowOptions);
+        if (canShowAuthorityStamp) {
+            addApprovalStamp(page, 472, 163, 36, { orgLabel: 'SCHOLARSHIP PORTAL', centerLabel: isRejected ? 'REJECTED' : application.status === 'VERIFIED' ? 'VERIFIED' : 'APPROVED', footerLabel: isRejected ? 'REJECTION RECORD' : application.status === 'VERIFIED' ? 'VERIFICATION RECORD' : 'OFFICIAL RECORD', color: isRejected ? '#9D2D35' : '#176B45', fill: isRejected ? '#FFF9F7' : '#F3FBF6' });
+            if (portalSignature?.image) page.push({ image: true, imageKey: 'adminSignature', x: 417, y: 99, width: 110, height: 15 });
+            pdfText(page, 'Digitally signed by', 385, 116, { size: 6.1, bold: true, color: '#344B65', width: 174, align: 'center' });
+            pdfText(page, signatureName, 385, 88, { size: 7.1, bold: true, color: '#143E68', width: 174, align: 'center' });
+            pdfText(page, 'Date & time: ' + dateTime(approvalTimestamp), 380, 76, { size: 5.7, color: '#536273', width: 184, align: 'center' });
+        }
 
-        addSection(page, 'DECLARATION', 99, { height: 17, size: 8.1 });
-        const declaration = `I, ${details.fullName || 'the applicant'}, declare that the information in this form is true and correct to the best of my knowledge. False information may result in recovery of the scholarship and further action.`;
-        pdfRect(page, 32, 51, 531, 42, '#FFFFFF', '#C7D2DE');
-        pdfText(page, declaration, 40, 83, { size: 7.1, width: 515, wrapAt: 112, leading: 8.5 });
-        pdfText(page, details.declarationAccepted ? 'Declaration accepted electronically' : 'Declaration not yet accepted - draft copy', 40, 65, { size: 7.0, bold: true, color: details.declarationAccepted ? '#176B45' : '#9B2C2C' });
-        pdfLine(page, 390, 60, 555, 60, '#7A8795', 0.7);
-        pdfText(page, 'Student Signature', 390, 52, { size: 6.8, color: '#536273', width: 165, align: 'right' });
-        const isDraft = String(application.status || '').toUpperCase() === 'DRAFT';
-        addFooter(page, isDraft ? 'Draft copy - it remains private until you submit it.' : 'Submitted application record - keep this copy for your records.');
+        const requiredDocuments = Array.isArray(application.scholarship?.requiredDocuments)
+            ? application.scholarship.requiredDocuments
+            : [];
+        const uploadedDocuments = Array.isArray(application.documents) ? application.documents : [];
+        const uploadedRequiredCount = requiredDocuments.filter((type) =>
+            uploadedDocuments.some((document) => document.documentType === type)
+        ).length;
+        const documentSummary = requiredDocuments.length
+            ? `Supporting documents uploaded: ${uploadedRequiredCount} of ${requiredDocuments.length} required`
+            : `Supporting documents uploaded: ${uploadedDocuments.length}`;
+        pdfText(page, documentSummary, 38, 67, { size: 6.1, color: '#536273', width: 519 });
+        pdfLine(page, 38, 51, 210, 51, '#7B8794', 0.7);
+        pdfText(page, 'Applicant signature', 38, 41, { size: 6, color: '#536273', width: 172, align: 'center' });
+        if (!canShowAuthorityStamp) {
+            pdfText(page, 'Authority verification pending', 383, 41, { size: 5.8, color: '#536273', width: 172, align: 'center' });
+        }
+        addFooter(page, canShowAuthorityStamp ? 'Authority-reviewed scholarship record' : 'Student application form');
 
-        const buffer = createFormPdf(page);
-        const filename = `${String(application.applicationNumber || 'scholarship-application').replace(/[^a-zA-Z0-9_-]/g, '-')}.pdf`;
+        let buffer;
+        if (portalSignature?.image) {
+            try {
+                buffer = createFormPdf(page, { images: { adminSignature: portalSignature.image } });
+            } catch (signatureImageError) {
+                console.warn('Application PDF signature image could not be embedded; continuing without signature:', signatureImageError.message);
+                buffer = createFormPdf(page);
+            }
+        } else {
+            buffer = createFormPdf(page);
+        }        const filename = `${String(application.applicationNumber || 'scholarship-application').replace(/[^a-zA-Z0-9_-]/g, '-')}.pdf`;
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Length', buffer.length);
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -2525,6 +2702,8 @@ async function downloadApplicationPdf(req, res) {
         return res.send(buffer);
     } catch (error) {
         console.error('Download scholarship application PDF error:', error);
-        return res.status(500).json({ success: false, message: 'Unable to generate the scholarship application PDF.' });
+        const response = { success: false, message: 'Unable to generate the scholarship application PDF.' };
+        if (process.env.NODE_ENV !== 'production') response.detail = error.message;
+        return res.status(500).json(response);
     }
 }

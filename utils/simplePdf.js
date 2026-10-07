@@ -42,7 +42,7 @@ const pdfColor = (value = '#172033') => {
         .join(' ');
 };
 
-const buildPageContent = (items, image) => {
+const buildPageContent = (items, images) => {
     const commands = [];
     let y = 790;
     for (const item of items) {
@@ -59,9 +59,18 @@ const buildPageContent = (items, image) => {
             commands.push(`q ${pdfColor(item.color)} RG ${item.lineWidth || 0.6} w ${item.x1} ${item.y1} m ${item.x2} ${item.y2} l S Q`);
             continue;
         }
-        if (item.image) {
+        if (item.shape === 'circle') {
+            const radius = item.radius;
+            const k = radius * 0.5522847498;
+            const path = `${item.cx + radius} ${item.cy} m ${item.cx + radius} ${item.cy + k} ${item.cx + k} ${item.cy + radius} ${item.cx} ${item.cy + radius} c ${item.cx - k} ${item.cy + radius} ${item.cx - radius} ${item.cy + k} ${item.cx - radius} ${item.cy} c ${item.cx - radius} ${item.cy - k} ${item.cx - k} ${item.cy - radius} ${item.cx} ${item.cy - radius} c ${item.cx + k} ${item.cy - radius} ${item.cx + radius} ${item.cy - k} ${item.cx + radius} ${item.cy} c h`;
+            if (item.fill && item.stroke) commands.push(`q ${pdfColor(item.fill)} rg ${pdfColor(item.stroke)} RG ${item.lineWidth || 0.8} w ${path} B Q`);
+            else if (item.fill) commands.push(`q ${pdfColor(item.fill)} rg ${path} f Q`);
+            else if (item.stroke) commands.push(`q ${pdfColor(item.stroke)} RG ${item.lineWidth || 0.8} w ${path} S Q`);
+            continue;
+        }        if (item.image) {
+            const image = images[item.imageKey || 'primary'];
             if (!image) continue;
-            commands.push(`q ${item.width} 0 0 ${item.height} ${item.x} ${item.y} cm /Im1 Do Q`);
+            commands.push(`q ${item.width} 0 0 ${item.height} ${item.x} ${item.y} cm /${image.resourceName} Do Q`);
             continue;
         }
         const size = item.size || 10;
@@ -73,7 +82,7 @@ const buildPageContent = (items, image) => {
                 let textX = item.x;
                 if (item.align === 'center' && item.width) textX += Math.max(0, (item.width - estimatedWidth) / 2);
                 if (item.align === 'right' && item.width) textX += Math.max(0, item.width - estimatedWidth);
-                const font = item.bold ? 'F2' : 'F1';
+                const font = item.font === 'serif' ? (item.bold ? 'F4' : 'F3') : (item.bold ? 'F2' : 'F1');
                 commands.push(`BT /${font} ${size} Tf ${pdfColor(item.color)} rg ${textX} ${textY} Td (${escapePdfText(text)}) Tj ET`);
                 textY -= item.leading || (size >= 15 ? 22 : 12);
             }
@@ -82,7 +91,7 @@ const buildPageContent = (items, image) => {
         if (item.spaceBefore) y -= item.spaceBefore;
         for (const text of wrapText(item.text, item.wrapAt || (size >= 15 ? 62 : 92))) {
             if (y < 48) break;
-            const font = item.bold ? 'F2' : 'F1';
+            const font = item.font === 'serif' ? (item.bold ? 'F4' : 'F3') : (item.bold ? 'F2' : 'F1');
             commands.push(`BT /${font} ${size} Tf 48 ${y} Td (${escapePdfText(text)}) Tj ET`);
             y -= item.leading || (size >= 15 ? 22 : 15);
         }
@@ -227,7 +236,15 @@ const preparePdfImage = (image) => {
 };
 
 const createPdf = (sections, options = {}) => {
-    const image = preparePdfImage(options.image);
+    const images = {};
+    if (options.image) images.primary = options.image;
+    for (const [key, image] of Object.entries(options.images || {})) images[key] = image;
+    const preparedImages = Object.fromEntries(
+        Object.entries(images)
+            .map(([key, image]) => [key, preparePdfImage(image)])
+            .filter(([, image]) => Boolean(image))
+            .map(([key, image], index) => [key, { ...image, resourceName: `Im${index + 1}` }])
+    );
     let pages = [];
     if (options.absolutePages) {
         pages = sections.map((items) => Array.isArray(items) ? items : [items]);
@@ -263,19 +280,27 @@ const createPdf = (sections, options = {}) => {
     objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
     objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
 
-    const imageObjectId = image ? 5 + pages.length * 2 : null;
+    let nextObjectId = 5 + pages.length * 2;
+    const serifFontId = nextObjectId++;
+    const serifBoldFontId = nextObjectId++;
+    const imageObjectIds = Object.fromEntries(Object.keys(preparedImages).map((key) => [key, nextObjectId++]));
+    objects[serifFontId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>';
+    objects[serifBoldFontId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold >>';
 
     pages.forEach((pageItems, index) => {
         const pageId = 5 + index * 2;
         const contentId = pageId + 1;
-        const stream = buildPageContent(pageItems, image);
+        const stream = buildPageContent(pageItems, preparedImages);
         const streamLength = Buffer.byteLength(stream, 'latin1');
-        const xObjectResource = image ? ` /XObject << /Im1 ${imageObjectId} 0 R >>` : '';
-        objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xObjectResource} >> /Contents ${contentId} 0 R >>`;
+        const xObjectResource = Object.keys(preparedImages).length
+            ? ` /XObject << ${Object.entries(imageObjectIds).map(([key, objectId]) => `/${preparedImages[key].resourceName} ${objectId} 0 R`).join(' ')} >>`
+            : '';
+        objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 ${serifFontId} 0 R /F4 ${serifBoldFontId} 0 R >>${xObjectResource} >> /Contents ${contentId} 0 R >>`;
         objects[contentId] = `<< /Length ${streamLength} >>\nstream\n${stream}\nendstream`;
     });
 
-    if (image) {
+    for (const [key, image] of Object.entries(preparedImages)) {
+        const imageObjectId = imageObjectIds[key];
         const streamLength = image.data.length;
         const decodeParams = image.filter === 'FlateDecode'
             ? ` /DecodeParms << /Predictor 1 >>`

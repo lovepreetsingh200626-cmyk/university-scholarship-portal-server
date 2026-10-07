@@ -49,6 +49,7 @@ const freeshipCardApplicationSchema = new mongoose.Schema(
             village: { type: String, trim: true, maxlength: 120, default: '' },
             postOffice: { type: String, trim: true, maxlength: 120, default: '' },
             tehsil: { type: String, trim: true, maxlength: 120, default: '' },
+            block: { type: String, trim: true, maxlength: 120, default: '' },
             district: { type: String, trim: true, maxlength: 120, default: '' },
             state: { type: String, trim: true, maxlength: 100, default: '' },
             domicileState: { type: String, trim: true, maxlength: 100, default: '' },
@@ -56,7 +57,7 @@ const freeshipCardApplicationSchema = new mongoose.Schema(
         },
         courseDetails: {
             presentlyStudying: { type: courseSchema, default: () => ({}) },
-            lastClassStudied: { type: courseSchema, default: () => ({}) },
+
             previousClassStudied: { type: courseSchema, default: () => ({}) }
         },
         declarations: {

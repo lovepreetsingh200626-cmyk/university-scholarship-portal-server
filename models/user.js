@@ -73,6 +73,22 @@ const userSchema = new mongoose.Schema(
             maxlength: 30
         },
 
+        adminSignatureData: {
+            type: Buffer,
+            select: false,
+            default: undefined
+        },
+
+        adminSignatureType: {
+            type: String,
+            enum: ['image/png', 'image/jpeg'],
+            select: false,
+            default: undefined
+        },
+        adminSignatureActive: {
+            type: Boolean,
+            default: false
+        },
         mustChangePassword: {
             type: Boolean,
             default: false

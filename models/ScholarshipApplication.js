@@ -107,6 +107,9 @@ const scholarshipApplicationSchema =
                     default: ''
                 },
 
+                presentRollNumber: { type: String, trim: true, maxlength: 60, default: '' },
+                permanentAddressState: { type: String, trim: true, maxlength: 100, default: '' },
+
                 registrationNumber: {
                     type: String,
                     trim: true,
@@ -115,13 +118,6 @@ const scholarshipApplicationSchema =
                 },
 
                 course: {
-                    type: String,
-                    trim: true,
-                    maxlength: 100,
-                    default: ''
-                },
-
-                department: {
                     type: String,
                     trim: true,
                     maxlength: 100,
@@ -173,6 +169,13 @@ const scholarshipApplicationSchema =
                 specialCategory: {
                     type: String,
                     trim: true,
+                    maxlength: 20,
+                    default: ''
+                },
+
+                specialCategoryType: {
+                    type: String,
+                    trim: true,
                     maxlength: 100,
                     default: ''
                 },
@@ -194,7 +197,7 @@ const scholarshipApplicationSchema =
                 tribes: {
                     type: String,
                     trim: true,
-                    maxlength: 100,
+                    maxlength: 500,
                     default: ''
                 },
 
@@ -216,6 +219,9 @@ const scholarshipApplicationSchema =
                     maxlength: 200,
                     default: ''
                 },
+
+                instituteState: { type: String, trim: true, maxlength: 100, default: '' },
+                instituteDistrict: { type: String, trim: true, maxlength: 120, default: '' },
 
                 tehsil: {
                     type: String,
@@ -362,6 +368,34 @@ const scholarshipApplicationSchema =
                     maxlength: 100,
                     default: ''
                 },
+
+                maritalStatus: { type: String, trim: true, maxlength: 30, default: '' },
+                parentProfession: { type: String, trim: true, maxlength: 120, default: '' },
+                divyangjan: { type: String, trim: true, maxlength: 20, default: '' },
+                classStartDate: { type: Date, default: null },
+                presentYear: { type: String, trim: true, maxlength: 40, default: '' },
+                section: { type: String, trim: true, maxlength: 50, default: '' },
+                modeOfStudy: { type: String, trim: true, maxlength: 50, default: '' },
+                enrollmentYear: { type: String, trim: true, maxlength: 4, default: '' },
+                previousBoard: { type: String, trim: true, maxlength: 200, default: '' },
+                previousPassingYear: { type: String, trim: true, maxlength: 4, default: '' },
+                class10Percentage: { type: Number, min: 0, max: 100, default: null },
+                class12Board: { type: String, trim: true, maxlength: 200, default: '' },
+                class12PassingYear: { type: String, trim: true, maxlength: 4, default: '' },
+                class12RollNumber: { type: String, trim: true, maxlength: 50, default: '' },
+                class12Percentage: { type: Number, min: 0, max: 100, default: null },
+                competitiveExamQualified: { type: String, trim: true, maxlength: 20, default: '' },
+                competitiveExamConductedBy: { type: String, trim: true, maxlength: 120, default: '' },
+                competitiveExamRollNumber: { type: String, trim: true, maxlength: 80, default: '' },
+                competitiveExamYear: { type: String, trim: true, maxlength: 10, default: '' },
+                domicileState: { type: String, trim: true, maxlength: 100, default: '' },
+                domicileStateIdentificationNumber: { type: String, trim: true, maxlength: 100, default: '' },
+                memberNumber: { type: String, trim: true, maxlength: 60, default: '' },
+                nameAsPerDomicileId: { type: String, trim: true, maxlength: 100, default: '' },
+                homeDistrict: { type: String, trim: true, maxlength: 120, default: '' },
+                subDistrict: { type: String, trim: true, maxlength: 120, default: '' },
+                village: { type: String, trim: true, maxlength: 120, default: '' },
+                pinCode: { type: String, trim: true, maxlength: 10, default: '' },
 
                 bankAccountNumber: {
                     type: String,
@@ -533,8 +567,38 @@ const scholarshipApplicationSchema =
                 default: null
             },
 
+            undertakingAcceptance: {
+                accepted: { type: Boolean, default: false },
+                statement: { type: String, trim: true, maxlength: 1000, default: '' },
+                acceptedAt: { type: Date, default: null },
+                acceptedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+            },
+
+            verifiedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User',
+                default: null
+            },
+
             verifiedAt: {
                 type: Date,
+                default: null
+            },
+
+            rejectedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User',
+                default: null
+            },
+
+            rejectedAt: {
+                type: Date,
+                default: null
+            },
+
+            sanctionedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User',
                 default: null
             },
 

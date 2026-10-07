@@ -432,6 +432,107 @@ const updateAdminProfile = async (
    CHANGE ADMIN PASSWORD
 ============================================================ */
 
+const MAX_ADMIN_SIGNATURE_SIZE = 500 * 1024;
+const jpegDimensions = (image) => {
+    let offset = 2;
+    while (offset + 4 < image.length) {
+        if (image[offset] !== 0xff) { offset += 1; continue; }
+        while (image[offset] === 0xff) offset += 1;
+        const marker = image[offset++];
+        if (marker === 0xd9 || marker === 0xda) break;
+        if ([0xd8, 0x01, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7].includes(marker)) continue;
+        if (offset + 2 > image.length) break;
+        const segmentLength = image.readUInt16BE(offset);
+        if (segmentLength < 2 || offset + segmentLength > image.length) break;
+        if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker) && segmentLength >= 7) {
+            return { height: image.readUInt16BE(offset + 3), width: image.readUInt16BE(offset + 5) };
+        }
+        offset += segmentLength;
+    }
+    return null;
+};
+
+const getAdminSignature = async (req, res) => {
+    try {
+        const admin = await User.findOne({ role: 'admin', isActive: true, adminSignatureActive: true, adminSignatureData: { $exists: true } })
+            .select('name +adminSignatureData +adminSignatureType')
+            .sort({ createdAt: 1 })
+            .lean();
+        const mimeType = admin?.adminSignatureType;
+        return res.json({
+            success: true,
+            signature: admin?.adminSignatureData && ['image/png', 'image/jpeg'].includes(mimeType)
+                ? { name: admin.name, dataUrl: 'data:' + mimeType + ';base64,' + Buffer.from(admin.adminSignatureData).toString('base64') }
+                : null
+        });
+    } catch (error) {
+        console.error('Get admin signature error:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to load the portal admin signature.' });
+    }
+};
+
+const saveAdminSignature = async (req, res) => {
+    const dataUrl = req.body?.dataUrl;
+    const match = typeof dataUrl === 'string'
+        ? /^data:(image\/png|image\/jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl)
+        : null;
+    if (!match) return res.status(400).json({ success: false, message: 'Upload a PNG or JPEG signature image.' });
+    const mimeType = match[1];
+    const encoded = match[2];
+    if (encoded.length > 700000 || encoded.length % 4 !== 0) {
+        return res.status(400).json({ success: false, message: 'The signature image must be 500 KB or smaller.' });
+    }
+    const image = Buffer.from(encoded, 'base64');
+    if (image.length < 100 || image.length > MAX_ADMIN_SIGNATURE_SIZE) {
+        return res.status(400).json({ success: false, message: 'The signature image must be valid and no larger than 500 KB.' });
+    }
+    let dimensions = null;
+    if (mimeType === 'image/png') {
+        const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+        if (image.length < 29 || !image.subarray(0, 8).equals(pngSignature) || image.readUInt32BE(8) !== 13 || image.toString('ascii', 12, 16) !== 'IHDR') {
+            return res.status(400).json({ success: false, message: 'The uploaded file is not a valid PNG image.' });
+        }
+        dimensions = { width: image.readUInt32BE(16), height: image.readUInt32BE(20) };
+        if (image[24] !== 8 || ![0, 2, 3, 4, 6].includes(image[25]) || image[28] !== 0) {
+            return res.status(400).json({ success: false, message: 'Use a non-interlaced, 8-bit PNG image.' });
+        }
+    } else {
+        if (image[0] !== 0xff || image[1] !== 0xd8 || image[2] !== 0xff) {
+            return res.status(400).json({ success: false, message: 'The uploaded file is not a valid JPEG image.' });
+        }
+        dimensions = jpegDimensions(image);
+        if (!dimensions) return res.status(400).json({ success: false, message: 'The uploaded JPEG image could not be read.' });
+    }
+    if (dimensions.width < 100 || dimensions.height < 20 || dimensions.width > 2400 || dimensions.height > 800) {
+        return res.status(400).json({ success: false, message: 'Use an image between 100 and 2400 px wide and 20 and 800 px high.' });
+    }
+    try {
+        const admin = await User.findOne({ _id: req.user.id, role: 'admin', isActive: true });
+        if (!admin) return res.status(404).json({ success: false, message: 'Admin account not found.' });
+        await User.updateMany({ role: 'admin' }, { $set: { adminSignatureActive: false } });
+        admin.adminSignatureData = image;
+        admin.adminSignatureType = mimeType;
+        admin.adminSignatureActive = true;
+        await admin.save();
+        return res.json({
+            success: true,
+            message: 'Portal administrator signature saved. It will appear on generated scholarship and Freeship PDFs.',
+            signature: { name: admin.name, dataUrl }
+        });
+    } catch (error) {
+        console.error('Save admin signature error:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to save the portal admin signature.' });
+    }
+};
+const removeAdminSignature = async (req, res) => {
+    try {
+        await User.updateMany({ role: 'admin' }, { $set: { adminSignatureActive: false } });
+        return res.json({ success: true, message: 'Portal administrator signature removed from generated PDFs.' });
+    } catch (error) {
+        console.error('Remove admin signature error:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to remove the portal admin signature.' });
+    }
+};
 const changeAdminPassword = async (
     req,
     res
@@ -704,6 +805,9 @@ module.exports = {
     getAdminProfile,
 
     updateAdminProfile,
+    getAdminSignature,
+    saveAdminSignature,
+    removeAdminSignature,
 
     changeAdminPassword,
     createAdminAccount

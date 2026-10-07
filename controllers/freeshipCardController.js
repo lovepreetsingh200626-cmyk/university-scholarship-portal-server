@@ -10,6 +10,7 @@ const { createPdf } = require('../utils/simplePdf');
 const { encryptAadhaar, decryptAadhaar } = require('../utils/aadhaarCrypto');
 const {
     addDocumentTitle,
+    addApprovalStamp,
     addFooter,
     addFullRow,
     addHeader,
@@ -29,6 +30,19 @@ const REQUIRED_DOCUMENTS = [
     'passingCertificate'
 ];
 const ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+
+const presentCourseText = (course = {}) => [
+    course.faculty,
+    course.facultyId ? `Faculty ID: ${course.facultyId}` : '',
+    course.course,
+    course.branch,
+    course.year,
+    course.academicSession ? `Academic session: ${course.academicSession}` : ''
+].filter(Boolean).join(' / ') || 'Not applicable';
+
+const previousCourseText = (course = {}) => [course.course, course.branch, course.year]
+    .filter(Boolean)
+    .join(' / ') || 'Not applicable';
 
 const makeApplicationNumber = () => {
     const stamp = Date.now().toString(36).toUpperCase();
@@ -66,6 +80,7 @@ const serializeApplication = (application, { revealAadhaar = false, includeStude
     }
     delete personal.aadhaarEncrypted;
     delete personal.aadhaarLastFour;
+    if (result.courseDetails) delete result.courseDetails.lastClassStudied;
     result.personalDetails = personal;
     result.documents = (result.documents || []).map((document) => ({
         _id: document._id,
@@ -181,6 +196,7 @@ const saveMyApplication = async (req, res) => {
             village: text(personal.village, 120),
             postOffice: text(personal.postOffice, 120),
             tehsil: text(personal.tehsil, 120),
+            block: text(personal.block, 120),
             district: text(personal.district, 120),
             state: text(personal.state, 100),
             domicileState: text(personal.domicileState, 100),
@@ -205,7 +221,7 @@ const saveMyApplication = async (req, res) => {
         };
         application.courseDetails = {
             presentlyStudying: course(courses.presentlyStudying),
-            lastClassStudied: course(courses.lastClassStudied),
+
             previousClassStudied: course(courses.previousClassStudied)
         };
         application.declarations = {
@@ -356,7 +372,7 @@ const submitApplication = async (req, res) => {
         const missing = requiredFields.filter(([, value]) => value === '' || value === null || value === undefined).map(([label]) => label);
         for (const [label, course] of [
             ['present course', courses.presentlyStudying],
-            ['last class studied', courses.lastClassStudied],
+
             ['previous class studied', courses.previousClassStudied]
         ]) {
             if (!course?.course || !course?.branch || !course?.year) missing.push(label);
@@ -390,8 +406,9 @@ const submitApplication = async (req, res) => {
     }
 };
 
-const pdfDate = (value) => value ? new Date(value).toLocaleDateString('en-GB') : 'Not provided';
-const pdfValue = (value) => value === null || value === undefined || value === '' ? 'Not provided' : String(value);
+const pdfDate = (value) => value ? new Date(value).toLocaleDateString('en-GB') : 'Not applicable';
+const pdfDateTime = (value) => value ? new Date(value).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Not applicable';
+const pdfValue = (value) => value === null || value === undefined || value === '' ? 'Not applicable' : String(value);
 
 const sendPdf = (res, filename, lines, options = {}) => {
     const buffer = createPdf(lines, options);
@@ -404,13 +421,22 @@ const sendPdf = (res, filename, lines, options = {}) => {
 
 const downloadApplicationPerforma = async (req, res) => {
     try {
-        const application = await getOrCreateForStudent(req.user.id);
-        if (!application) return res.status(404).json({ success: false, message: 'Student account not found.' });
+        const ensuredApplication = await getOrCreateForStudent(req.user.id);
+        if (!ensuredApplication) return res.status(404).json({ success: false, message: 'Student account not found.' });
+        const application = await FreeshipCardApplication.findById(ensuredApplication._id)
+            .select('+personalDetails.aadhaarEncrypted')
+            .populate({ path: 'reviewedBy', select: 'name +adminSignatureData +adminSignatureType' });
+        const isApproved = application.status === 'APPROVED';
+        const isRejected = application.status === 'REJECTED';
+        const hasAuthorityDecision = isApproved || isRejected;
+        const adminName = hasAuthorityDecision ? (application.reviewedBy?.name || 'Portal Administrator') : '';
+        const adminSignature = hasAuthorityDecision && application.reviewedBy?.adminSignatureData && ['image/png', 'image/jpeg'].includes(application.reviewedBy.adminSignatureType)
+            ? { data: Buffer.from(application.reviewedBy.adminSignatureData), type: application.reviewedBy.adminSignatureType }
+            : null;
         const personal = application.personalDetails || {};
         const courses = application.courseDetails || {};
         const declarations = application.declarations || {};
         const documents = application.documents || [];
-        const coursesText = (course) => [course?.course, course?.branch, course?.year].filter(Boolean).join(' / ') || 'Not provided';
         const documentFile = (type) => documents.find((item) => item.documentType === type)?.fileName || 'Not uploaded';
         const yesNo = (value) => value === true ? 'Yes' : value === false ? 'No' : 'Not answered';
         const page = [];
@@ -431,10 +457,10 @@ const downloadApplicationPerforma = async (req, res) => {
 
         addSection(page, '02. ADDRESS AND COURSE HISTORY', 515, { fill: '#16766E' });
         addPairRow(page, 489, 23, { label: 'Village / Address', value: personal.village }, { label: 'Post Office', value: personal.postOffice });
-        addPairRow(page, 466, 23, { label: 'Tehsil', value: personal.tehsil }, { label: 'District', value: personal.district });
+        addPairRow(page, 466, 23, { label: 'Sub-district / Block', value: [personal.tehsil, personal.block].filter(Boolean).join(' / ') }, { label: 'District', value: personal.district }, { labelSize: 6.8, valueSize: 7.2 });
         addPairRow(page, 443, 23, { label: 'Address State / PIN', value: [personal.state, personal.pinCode].filter(Boolean).join(' / ') }, { label: 'Domicile State / UT', value: personal.domicileState }, { labelSize: 6.8, valueSize: 7.2 });
-        addFullRow(page, 420, 23, 'Present Course', coursesText(courses.presentlyStudying), { labelWidth: 127, valueSize: 7.8 });
-        addFullRow(page, 397, 23, 'Previous Class / Course', coursesText(courses.previousClassStudied), { labelWidth: 127, valueSize: 7.8 });
+        addFullRow(page, 420, 23, 'Present Course Details', presentCourseText(courses.presentlyStudying), { labelWidth: 127, valueSize: 7.8, leading: 9 });
+        addFullRow(page, 397, 23, 'Previous Class / Course', previousCourseText(courses.previousClassStudied), { labelWidth: 127, valueSize: 7.8 });
 
         addSection(page, '03. UPLOADED DOCUMENTS', 371, { fill: '#16766E' });
         addPairRow(page, 345, 23, { label: 'Applicant Photo', value: documentFile('photo') }, { label: 'Income Certificate', value: documentFile('incomeCertificate') }, { labelSize: 6.8, valueSize: 7.1 });
@@ -444,12 +470,24 @@ const downloadApplicationPerforma = async (req, res) => {
         addPairRow(page, 270, 23, { label: 'Scheme Provisions Read', value: yesNo(declarations.hasReadGuidelines) }, { label: 'Information Accurate', value: yesNo(declarations.informationAccurate) }, { labelSize: 6.8 });
         addPairRow(page, 247, 23, { label: 'Reimbursement Undertaking', value: yesNo(declarations.undertakeReimbursement) }, { label: 'Submitted On', value: pdfDate(application.submittedAt) }, { labelSize: 6.6 });
         addSection(page, 'APPLICANT SIGNATURE', 218, { fill: '#16766E' });
-        pdfText(page, 'Applicant confirms that the details and supporting documents in this performa are accurate.', 39, 197, { size: 7.6, width: 515, wrapAt: 108 });
-        pdfLine(page, 363, 145, 555, 145, '#7A8795', 0.8);
-        pdfText(page, personal.fullName || 'Student', 363, 130, { size: 8, bold: true, width: 192, align: 'center' });
-        pdfText(page, 'Signature of Applicant', 363, 116, { size: 7.2, color: '#536273', width: 192, align: 'center' });
+        pdfText(page, 'Applicant confirms that the details and supporting documents in this performa are accurate.', 39, 197, { size: 7.6, width: hasAuthorityDecision ? 320 : 515, wrapAt: hasAuthorityDecision ? 62 : 108 });
+        pdfLine(page, 45, 145, 239, 145, '#7A8795', 0.8);
+        pdfText(page, personal.fullName || 'Student', 45, 130, { size: 8, bold: true, width: 192, align: 'center' });
+        pdfText(page, 'Signature of Applicant', 45, 123, { size: 7.2, color: '#536273', width: 194, align: 'center' });
+        if (hasAuthorityDecision) {
+            addApprovalStamp(page, 460, 166, 31, { orgLabel: 'FREESHIP CARD', centerLabel: isRejected ? 'REJECTED' : 'APPROVED', footerLabel: isRejected ? 'REJECTION RECORD' : 'OFFICIAL RECORD', color: isRejected ? '#9D2D35' : '#176B45', fill: isRejected ? '#FFF9F7' : '#F3FBF6' });
+            pdfText(page, 'Digitally signed by', 365, 127, { size: 6.1, bold: true, color: '#344B65', width: 190, align: 'center' });
+            if (adminSignature) page.push({ image: true, imageKey: 'adminSignature', x: 405, y: 106, width: 110, height: 15 });
+            pdfText(page, adminName, 365, 98, { size: 7.0, bold: true, color: '#143E68', width: 190, align: 'center' });
+            pdfText(page, 'Date & time: ' + pdfDateTime(application.reviewedAt), 365, 85, { size: 5.7, color: '#536273', width: 190, align: 'center' });
+        } else {
+            pdfText(page, 'Authority approval pending', 365, 123, { size: 6.2, color: '#536273', width: 190, align: 'center' });
+        }
         addFooter(page, 'A draft is not sent to the administration until the student submits it.');
-        return sendPdf(res, `${application.applicationNumber}-application.pdf`, [page], { absolutePages: true });
+        return sendPdf(res, `${application.applicationNumber}-application.pdf`, [page], {
+            absolutePages: true,
+            ...(adminSignature ? { images: { adminSignature } } : {})
+        });
     } catch (error) {
         console.error('Download freeship application PDF error:', error);
         return res.status(500).json({ success: false, message: 'Unable to generate the application PDF.' });
@@ -460,7 +498,7 @@ const downloadApprovedCard = async (req, res) => {
     try {
         const application = await FreeshipCardApplication.findOne({ student: req.user.id })
             .select('+personalDetails.aadhaarEncrypted')
-            .populate('reviewedBy', 'name');
+            .populate({ path: 'reviewedBy', select: 'name +adminSignatureData +adminSignatureType' });
         if (!application) return res.status(404).json({ success: false, message: 'Freeship card application not found.' });
         if (application.status !== 'APPROVED') {
             return res.status(403).json({ success: false, message: 'The Freeship Card PDF is available after the application is approved.' });
@@ -487,9 +525,11 @@ const downloadApprovedCard = async (req, res) => {
                 }
             }
         }
-        const address = [personal.village, personal.postOffice, personal.tehsil, personal.district, personal.state, personal.pinCode].filter(Boolean).join(', ');
-        const courseText = (course) => [course?.course, course?.branch, course?.year].filter(Boolean).join(' / ') || 'Not provided';
+        const address = [personal.village, personal.postOffice, personal.tehsil, personal.block, personal.district, personal.state, personal.pinCode].filter(Boolean).join(', ');
         const adminName = application.reviewedBy?.name || '';
+        const adminSignature = application.reviewedBy?.adminSignatureData && ['image/png', 'image/jpeg'].includes(application.reviewedBy.adminSignatureType)
+            ? { data: Buffer.from(application.reviewedBy.adminSignatureData), type: application.reviewedBy.adminSignatureType }
+            : null;
         const fullAadhaar = decryptAadhaar(personal.aadhaarEncrypted);
         const page = [];
 
@@ -504,7 +544,7 @@ const downloadApprovedCard = async (req, res) => {
         addSection(page, 'STUDENT DETAILS', 658, { fill: '#16766E' });
         const identityRow = { x: 32, width: 388, labelWidth: 83, labelSize: 7.3, valueSize: 8.5 };
         addPairRow(page, 628, 30, { label: 'Name of Student', value: personal.fullName }, { label: 'Applicant ID', value: personal.applicantId }, identityRow);
-        addPairRow(page, 598, 30, { label: 'Aadhaar No.', value: fullAadhaar || 'Not provided' }, { label: 'Date of Birth', value: pdfDate(personal.dateOfBirth) }, identityRow);
+        addPairRow(page, 598, 30, { label: 'Aadhaar No.', value: fullAadhaar || 'Not applicable' }, { label: 'Date of Birth', value: pdfDate(personal.dateOfBirth) }, identityRow);
         addPairRow(page, 568, 30, { label: "Father's Name", value: personal.fatherName }, { label: "Mother's Name", value: personal.motherName }, identityRow);
         addPairRow(page, 538, 30, { label: 'Annual Family Income', value: `Rs. ${pdfValue(personal.annualFamilyIncome)}` }, { label: 'Category', value: personal.category }, { ...identityRow, labelSize: 7.0, valueSize: 8.2 });
 
@@ -517,8 +557,8 @@ const downloadApprovedCard = async (req, res) => {
             pdfText(page, 'Upload JPG or PNG', 424, 574, { size: 6.8, color: '#536273', width: 135, align: 'center' });
         }
 
-        addFullRow(page, 505, 27, 'Present Course', courseText(courses.presentlyStudying), { labelWidth: 112, labelSize: 7.6, valueSize: 8.5 });
-        addFullRow(page, 475, 27, 'Previous Class / Course', courseText(courses.previousClassStudied), { labelWidth: 137, labelSize: 7.6, valueSize: 8.5 });
+        addFullRow(page, 505, 27, 'Present Course Details', presentCourseText(courses.presentlyStudying), { labelWidth: 112, labelSize: 7.6, valueSize: 8.5, leading: 9 });
+        addFullRow(page, 475, 27, 'Previous Class / Course', previousCourseText(courses.previousClassStudied), { labelWidth: 137, labelSize: 7.6, valueSize: 8.5 });
 
         addSection(page, 'DOCUMENT CHECKLIST', 447, { fill: '#16766E' });
         addFullRow(page, 414, 31, 'Documents on file', 'Applicant photo and required income, caste, and passing certificates.', { labelWidth: 112, labelSize: 7.5, valueSize: 8.5, wrapAt: 90 });
@@ -538,13 +578,18 @@ const downloadApprovedCard = async (req, res) => {
         pdfLine(page, 45, 140, 239, 140, '#7A8795', 0.8);
         pdfText(page, 'Signature of Applicant', 45, 123, { size: 7.8, color: '#536273', width: 194, align: 'center' });
         pdfText(page, personal.fullName || 'Student', 45, 107, { size: 8.5, bold: true, width: 194, align: 'center' });
-        pdfRect(page, 328, 98, 235, 68, '#EAF4F1', '#91BFB2', 0.8);
-        pdfText(page, 'APPROVED IN THE PORTAL', 336, 151, { size: 8.0, bold: true, color: '#176B45', width: 219, align: 'center' });
-        pdfText(page, adminName || 'Portal Administrator', 336, 132, { size: 8.6, bold: true, color: '#143E68', width: 219, align: 'center' });
-        pdfText(page, `Approval date: ${pdfDate(application.reviewedAt)}`, 336, 113, { size: 7.8, color: '#536273', width: 219, align: 'center' });
+        addApprovalStamp(page, 445, 140, 32, { orgLabel: 'FREESHIP CARD', centerLabel: 'APPROVED', footerLabel: 'OFFICIAL RECORD', color: '#176B45', fill: '#F3FBF6' });
+        pdfText(page, 'Digitally signed by', 328, 101, { size: 6.1, bold: true, color: '#344B65', width: 235, align: 'center' });
+        if (adminSignature) page.push({ image: true, imageKey: 'adminSignature', x: 394, y: 80, width: 102, height: 14 });
+        pdfText(page, adminName || 'Portal Administrator', 328, 72, { size: 7.1, bold: true, color: '#143E68', width: 235, align: 'center' });
+        pdfText(page, 'Date & time: ' + pdfDateTime(application.reviewedAt), 328, 59, { size: 5.8, color: '#536273', width: 235, align: 'center' });
         addFooter(page, 'Approval recorded by the University Scholarship Portal.');
 
-        return sendPdf(res, `${application.applicationNumber}-approved-card.pdf`, [page], { absolutePages: true, image: cardPhoto });
+        return sendPdf(res, `${application.applicationNumber}-approved-card.pdf`, [page], {
+            absolutePages: true,
+            ...(cardPhoto ? { image: cardPhoto } : {}),
+            ...(adminSignature ? { images: { adminSignature } } : {})
+        });
     } catch (error) {
         console.error('Download approved Freeship Card PDF error:', error);
         return res.status(500).json({ success: false, message: 'Unable to generate the approved card PDF.' });

@@ -4,6 +4,9 @@ const rateLimit = require('express-rate-limit');
 const {
     getAdminProfile,
     updateAdminProfile,
+    getAdminSignature,
+    saveAdminSignature,
+    removeAdminSignature,
     changeAdminPassword,
     createAdminAccount
 } = require('../controllers/adminSettingsController');
@@ -35,6 +38,9 @@ const adminCreationLimiter = rateLimit({
    Get the currently logged-in admin profile.
 */
 
+router.get('/signature', protect, adminOnly, getAdminSignature);
+router.put('/signature', protect, adminOnly, saveAdminSignature);
+router.delete('/signature', protect, adminOnly, removeAdminSignature);
 router.get(
     '/profile',
     protect,

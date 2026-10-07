@@ -35,6 +35,22 @@ const scholarshipSchema =
                 maxlength: 20
             },
 
+            // Scheme level (e.g. Pre-Matric / Post-Matric), distinct from student caste/category.
+            schemeCategory: {
+                type: String,
+                trim: true,
+                enum: [
+                    '',
+                    'Pre-Matric',
+                    'Post-Matric',
+                    'Top Class',
+                    'Merit-cum-Means (MCM)',
+                    'Post-Matric / Top Class / MCM',
+                    'Other NSP Scheme'
+                ],
+                default: ''
+            },
+
 
             /* ====================================================
                ELIGIBILITY

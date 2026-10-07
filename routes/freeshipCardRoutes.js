@@ -13,6 +13,7 @@ const {
     getOneForAdmin,
     reviewForAdmin
 } = require('../controllers/freeshipCardController');
+const { searchPostOffices } = require('../utils/postOfficeDirectory');
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ router.get('/admin', protect, adminOnly, getAllForAdmin);
 router.get('/admin/:id', protect, adminOnly, getOneForAdmin);
 router.put('/admin/:id/:action', protect, adminOnly, reviewForAdmin);
 
+router.get('/post-offices', protect, studentOnly, searchPostOffices);
 router.get('/me', protect, studentOnly, getMyApplication);
 router.get('/me/performa.pdf', protect, studentOnly, downloadApplicationPerforma);
 router.get('/me/card.pdf', protect, studentOnly, downloadApprovedCard);
